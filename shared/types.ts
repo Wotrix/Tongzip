@@ -203,8 +203,10 @@ export interface Settings {
   showRecentTasks: boolean;
   /** 左侧导航栏宽度(px),可拖 156–260,默认 176 */
   sidebarWidth: number;
-  /** 浏览文件列表可拖列宽(px):类型/大小/时间,默认 110/110/160 */
-  listColumnWidths: { type: number; size: number; time: number };
+  /** 目录树面板宽度(px),可拖 160–400,默认 200 */
+  treeWidth: number;
+  /** 浏览文件列表可拖列宽(px):类型/大小/时间默认 110/110/160;name 缺省=名称列自适应,拖过才定宽 */
+  listColumnWidths: { type: number; size: number; time: number; name?: number };
 }
 
 /** 启动载荷:通过 argv 打开的初始目标 */

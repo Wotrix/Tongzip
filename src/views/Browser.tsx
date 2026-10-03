@@ -44,13 +44,17 @@ const TB_OUTLINE_CLS = cn(TB_CLS, 'border-border bg-background dark:bg-backgroun
 /* ---------- T13 版式令牌:文件列表(列宽 CSS 变量单一真相,表头与行共用同一网格模板) ---------- */
 const COL_DEFAULTS = { type: 110, size: 110, time: 160 } as const;
 type ColKey = keyof typeof COL_DEFAULTS;
+/** 任意可拖列:name 特殊——缺省自适应,拖过才定宽,双击回自适应 */
+type AnyColKey = ColKey | 'name';
 /** 每列拖动范围 [下限, 上限];时间列下限要容得下完整时间戳 */
 const COL_LIMITS: Record<ColKey, [number, number]> = { type: [72, 320], size: [72, 320], time: [110, 320] };
+const NAME_RANGE: [number, number] = [120, 600];
 const clampCol = (k: ColKey, w: number) => Math.min(COL_LIMITS[k][1], Math.max(COL_LIMITS[k][0], Math.round(w) || COL_DEFAULTS[k]));
-/** 表头/行共用:名称列弹性但保底 120px;窄容不下时 min-w 强制溢出→滚动容器横滚,表头随行对齐 */
+const clampName = (w: number) => Math.min(NAME_RANGE[1], Math.max(NAME_RANGE[0], Math.round(w) || 200));
+/** 表头/行共用:名称列未定宽时弹性保底 120px;窄容不下时 min-w 强制溢出→滚动容器横滚,表头随行对齐 */
 const LIST_GRID = cn(
-  'grid grid-cols-[30px_minmax(120px,1fr)_var(--col-type)_var(--col-size)_var(--col-time)] items-center pl-3 pr-4',
-  'min-w-[calc(30px_+_120px_+_var(--col-type)_+_var(--col-size)_+_var(--col-time)_+_28px)]',
+  'grid grid-cols-[30px_var(--col-name,minmax(120px,1fr))_var(--col-type)_var(--col-size)_var(--col-time)] items-center pl-3 pr-4',
+  'min-w-[calc(30px_+_max(120px,var(--col-name,120px))_+_var(--col-type)_+_var(--col-size)_+_var(--col-time)_+_28px)]',
 );
 /** 自绘对勾的原生复选框(旧 .ck-box input 的 appearance:none 画法平移;勾选色仍用 :root 的 --accent-ink) */
 const CK_CLS = cn(
@@ -127,40 +131,70 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   const lastClick = useRef<string | null>(null);
   const dragging = useRef(false);
 
-  /* 可拖三列列宽:CSS 变量挂在滚动容器上作单一真相;松手才写设置(避免每帧 IO);挂载时回读,非法值回默认 */
-  const [cols, setCols] = useState<Record<ColKey, number>>({ ...COL_DEFAULTS });
-  const [colDrag, setColDrag] = useState<ColKey | null>(null);
+  /* 可拖列宽:CSS 变量挂在滚动容器上作单一真相;松手才写设置(避免每帧 IO);挂载时回读,非法值回默认 */
+  const [cols, setCols] = useState<Record<ColKey, number> & { name?: number }>({ ...COL_DEFAULTS });
+  const [colDrag, setColDrag] = useState<AnyColKey | null>(null);
+  /* 目录树面板宽度:可拖 160–400,双击回 200,持久化 treeWidth */
+  const [treeW, setTreeW] = useState(200);
+  const [treeDrag, setTreeDrag] = useState(false);
   useEffect(() => {
     void (async () => {
-      const c = (await window.tz.getSettings()).listColumnWidths;
+      const s = await window.tz.getSettings();
+      const c = s.listColumnWidths;
+      if (typeof s.treeWidth === 'number') setTreeW(Math.min(400, Math.max(160, Math.round(s.treeWidth)) || 200));
       if (!c) return;
       setCols((p) => ({
         type: clampCol('type', typeof c.type === 'number' ? c.type : p.type),
         size: clampCol('size', typeof c.size === 'number' ? c.size : p.size),
         time: clampCol('time', typeof c.time === 'number' ? c.time : p.time),
+        name: typeof c.name === 'number' ? clampName(c.name) : undefined,
       }));
     })();
   }, []);
-  const commitCols = (next: Record<ColKey, number>) => {
+  const commitCols = (next: typeof cols) => {
     setCols(next);
     void window.tz.setSettings({ listColumnWidths: next });
   };
-  const startColDrag = (k: ColKey, e: React.PointerEvent) => {
+  const startColDrag = (k: AnyColKey, e: React.PointerEvent) => {
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    const snapshot = cols;
-    const at = (ev: PointerEvent) => clampCol(k, snapshot[k] + ev.clientX - startX);
+    /* name 未定宽时以当前实测格宽为基准(自适应宽随窗口变,只在按下瞬间取一次) */
+    const base = k === 'name' ? (cols.name ?? (el.parentElement ? el.parentElement.getBoundingClientRect().width : 200)) : cols[k];
+    const at = (ev: PointerEvent) => (k === 'name' ? clampName(base + ev.clientX - startX) : clampCol(k, base + ev.clientX - startX));
     const move = (ev: PointerEvent) => setCols((p) => ({ ...p, [k]: at(ev) }));
     const up = (ev: PointerEvent) => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
       setColDrag(null);
-      commitCols({ ...snapshot, [k]: at(ev) });
+      commitCols({ ...cols, [k]: at(ev) });
     };
     setColDrag(k);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  };
+
+  /* 目录树右缘拖宽:与列手柄同一套 capture 模式,松手才持久化 */
+  const startTreeDrag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const base = treeW;
+    const clampT = (w: number) => Math.min(400, Math.max(160, Math.round(w) || 200));
+    const at = (ev: PointerEvent) => clampT(base + ev.clientX - startX);
+    const move = (ev: PointerEvent) => setTreeW(at(ev));
+    const up = (ev: PointerEvent) => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      setTreeDrag(false);
+      void window.tz.setSettings({ treeWidth: at(ev) });
+    };
+    setTreeDrag(true);
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
@@ -427,23 +461,23 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         className={cn(
           'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground',
           sortKey === k && 'font-semibold text-primary',
+          /* 拖动中:被调列表头整块高亮(蓝底白字框),反馈一目了然 */
+          colDrag === k && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
         )}>
         {label}{sortKey === k ? (asc ? ' ↑' : ' ↓') : ''}
       </button>
-      {/* 可拖列手柄:骑在本列右缘(=下一列左界)上,11px 宽命中区+常驻分隔线保证可见可瞄;双击回默认 */}
-      {k !== 'name' && (
-        <span
-          aria-hidden
-          title="拖拽调整列宽 · 双击恢复默认"
-          onPointerDown={(e) => startColDrag(k, e)}
-          onDoubleClick={() => commitCols({ ...cols, [k]: COL_DEFAULTS[k] })}
-          className={cn(
-            'absolute -right-[6px] top-0 z-10 h-full w-[11px] cursor-col-resize touch-none',
-            'after:absolute after:inset-y-1 after:left-[5px] after:w-px after:bg-border after:transition-all hover:after:left-[4px] hover:after:w-[3px] hover:after:bg-primary/50',
-            colDrag === k && 'after:left-[4px] after:w-[3px] after:bg-primary/70',
-          )}
-        />
-      )}
+      {/* 可拖列手柄:骑在本列右缘(=下一列左界)上,11px 宽命中区+常驻分隔线保证可见可瞄;双击回默认(名称列回自适应) */}
+      <span
+        aria-hidden
+        title={k === 'name' ? '拖拽调整列宽 · 双击恢复自适应宽度' : '拖拽调整列宽 · 双击恢复默认'}
+        onPointerDown={(e) => startColDrag(k, e)}
+        onDoubleClick={() => commitCols({ ...cols, [k]: k === 'name' ? undefined : COL_DEFAULTS[k as ColKey] })}
+        className={cn(
+          'absolute -right-[6px] top-0 z-10 h-full w-[11px] cursor-col-resize touch-none',
+          'after:absolute after:inset-y-1 after:left-[5px] after:w-px after:bg-border after:transition-all hover:after:left-[4px] hover:after:w-[3px] hover:after:bg-primary/50',
+          colDrag === k && 'after:left-[4px] after:w-[3px] after:bg-primary/70',
+        )}
+      />
     </div>
   );
 
@@ -573,8 +607,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
             <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[15px]" onClick={() => setTreeMode('full')}><IconTree /></button>
           </aside>
         ) : (
-          /* bt-row / on = 键盘导航与自动滚动的 querySelector 钩子(见本文件上方),不承载样式 */
-          <aside className="br-tree w-[200px] flex-none overflow-auto border-r border-border bg-secondary p-1.5 pb-3.5 outline-none" ref={treeRef} tabIndex={0} aria-label="压缩包目录树" onKeyDown={onTreeKey}>
+          /* 目录树面板:外层 div 控宽(手柄骑右缘,不受内层滚动影响);bt-row / on = 键盘导航与自动滚动的 querySelector 钩子,不承载样式 */
+          <div className={cn('relative flex-none', treeDrag && 'select-none')} style={{ width: treeW }}>
+          <aside className="br-tree h-full w-full overflow-auto border-r border-border bg-secondary p-1.5 pb-3.5 outline-none" ref={treeRef} tabIndex={0} aria-label="压缩包目录树" onKeyDown={onTreeKey}>
             {visibleRows.map(({ node, depth }) => {
               const open = depth === 0 || expanded.has(node.path);
               return (
@@ -603,13 +638,26 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               );
             })}
           </aside>
+          {/* 右缘拖宽手柄:与侧栏/列手柄同款交互;双击回默认 200 */}
+          <span
+            aria-hidden
+            title="拖拽调整目录树宽度 · 双击恢复默认"
+            onPointerDown={startTreeDrag}
+            onDoubleClick={() => { setTreeW(200); void window.tz.setSettings({ treeWidth: 200 }); }}
+            className={cn(
+              'absolute inset-y-0 right-0 z-20 w-[9px] cursor-col-resize touch-none',
+              'after:absolute after:inset-y-2 after:right-0 after:w-[2px] after:rounded-full after:bg-transparent',
+              'after:transition-colors hover:after:bg-primary/40', treeDrag && 'after:bg-primary/60',
+            )}
+          />
+          </div>
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* 旧坑根治:表头必须在滚动容器内 sticky top-0——此前与行列表平级,纵向滚动条一现行整体左移错位。
               list-head/entry-list/row/ck-box 类名保留作 CDP 探针对选择器钩子,不承载样式 */}
           <div
             className={cn('entry-list min-h-0 flex-1 overflow-auto pb-5', colDrag && 'select-none')}
-            style={{ '--col-type': `${cols.type}px`, '--col-size': `${cols.size}px`, '--col-time': `${cols.time}px` } as React.CSSProperties}
+            style={{ '--col-type': `${cols.type}px`, '--col-size': `${cols.size}px`, '--col-time': `${cols.time}px`, ...(cols.name ? { '--col-name': `${cols.name}px` } : {}) } as React.CSSProperties}
             onContextMenu={(e) => onContextMenu(e, null)}
           >
             <div className={cn(LIST_GRID, 'list-head sticky top-0 z-[1] h-8 border-b border-border bg-background text-xs text-muted-foreground')}>
