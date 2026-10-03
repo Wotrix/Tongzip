@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from 'react';
 import type { JobKind, ProgressEvent } from '@shared/types';
 import { IconClose, IconInfo, IconWarn } from './icons';
+import { cn } from '@/lib/utils';
 
 /* ---------------- Modal ---------------- */
 
@@ -18,9 +19,9 @@ export function Modal({ title, icon, onClose, children, width }: {
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
   return (
-    <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sheet" style={width ? { width: `min(${width}px, calc(100vw - 60px))` } : undefined}>
-        <h2>{icon}{title}</h2>
+    <div className="app-nodrag fixed inset-0 z-90 flex items-center justify-center bg-[rgba(24,28,32,.32)] animate-[fadein_.12s_ease-out] dark:bg-[rgba(0,0,0,.5)]" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="max-h-[calc(100vh-70px)] w-[min(640px,calc(100vw-60px))] overflow-auto rounded-xl border border-border bg-popover p-[22px_24px] text-popover-foreground shadow-[var(--shadow-sheet)] animate-[rise_.14s_ease-out]" style={width ? { width: `min(${width}px, calc(100vw - 60px))` } : undefined}>
+        <h2 className="mb-[18px] flex items-center gap-2.5 text-[15px] font-semibold [&_svg]:size-[18px] [&_svg]:text-primary">{icon}{title}</h2>
         {children}
       </div>
     </div>
@@ -46,10 +47,16 @@ export function ToastHost({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toasts">
+      <div className="app-nodrag pointer-events-none fixed bottom-[26px] left-1/2 z-120 flex -translate-x-1/2 flex-col items-center gap-2">
         {items.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`}>
-            {t.kind === 'err' ? <IconWarn className="ti" /> : <IconInfo className="ti" />}
+          <div key={t.id} className={cn(
+            'flex max-w-[520px] items-center gap-[9px] rounded-lg border border-border bg-popover px-[15px] py-[9px] text-xs text-popover-foreground shadow-[var(--shadow-float)] animate-[rise_.16s_ease-out]',
+            '[&_svg]:size-[15px] [&_svg]:shrink-0',
+            t.kind === 'ok' && '[&_svg]:text-primary',
+            t.kind === 'err' && 'border-[color-mix(in_srgb,var(--destructive)_45%,var(--border))] [&_svg]:text-destructive',
+            t.kind === 'info' && '[&_svg]:text-muted-foreground',
+          )}>
+            {t.kind === 'err' ? <IconWarn /> : <IconInfo />}
             <span>{t.text}</span>
           </div>
         ))}
@@ -196,15 +203,24 @@ export function ContextMenu({ x, y, items, onClose }: {
   const left = Math.min(x, window.innerWidth - 210);
   const top = Math.min(y, window.innerHeight - items.length * 33 - 20);
   return (
-    <div ref={ref} className="ctx-menu" style={{ left, top }}>
+    <div ref={ref} className={cn(
+      'app-nodrag fixed z-80 min-w-[202px] rounded-lg border p-[5px]',
+      'border-[var(--mica-line)] bg-[var(--mica-bg)] shadow-[var(--shadow-mica)]',
+      'backdrop-blur-[30px] [backdrop-filter:blur(30px)_saturate(1.6)]',
+    )} style={{ left, top }}>
       {items.map((it, i) => it.sep
-        ? <div key={i} className="ctx-sep" />
+        ? <div key={i} className="mx-2 my-[5px] h-px bg-border" />
         : (
-          <button key={i} className={`ctx-item ${it.danger ? 'danger' : ''}`} disabled={it.disabled}
+          <button key={i} disabled={it.disabled}
+            className={cn(
+              'flex h-8 w-full items-center gap-2.5 rounded px-2.5 pr-2.5 text-left text-[12.5px] text-popover-foreground',
+              'hover:bg-accent active:bg-primary/10 disabled:cursor-default disabled:text-muted-foreground disabled:hover:bg-transparent',
+              it.danger && 'text-destructive hover:bg-[#fbeeec] dark:hover:bg-[#3a2622]',
+            )}
             onClick={() => { onClose(); it.onClick?.(); }}>
-            <span className="ctx-ico">{it.icon}</span>
-            <span className="ctx-label">{it.label}</span>
-            {it.kbd && <span className="ctx-kbd">{it.kbd}</span>}
+            <span className={cn('inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4 [&_svg]:opacity-90', it.danger ? 'text-destructive [&_svg]:opacity-100' : 'text-muted-foreground')}>{it.icon}</span>
+            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{it.label}</span>
+            {it.kbd && <span className="ml-auto pl-[18px] text-[11.5px] text-muted-foreground">{it.kbd}</span>}
           </button>
         ))}
     </div>

@@ -228,48 +228,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .crumb-sep { color: var(--ink-3); display: inline-flex; }
 .crumb-sep svg { width: 14px; height: 14px; }
 
-/* ---------------- 多标签栏(顶栏下方,仅浏览视图) ---------------- */
-
-.tab-bar {
-  flex: none;
-  display: flex; align-items: center; gap: 4px;
-  height: 36px; padding: 0 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-chrome);
-}
-.tab-list {
-  display: flex; align-items: center; gap: 2px;
-  height: 100%; min-width: 0;
-  overflow-x: auto; scrollbar-width: none;
-}
-.tab-list::-webkit-scrollbar { display: none; }
-.tab {
-  flex: none;
-  display: flex; align-items: center; gap: 6px;
-  height: 25px; padding: 0 6px 0 10px;
-  max-width: 190px;
-  border-radius: 6px;
-  font-size: 12px; color: var(--ink-2);
-  cursor: pointer; user-select: none;
-  transition: background .14s ease, color .14s ease;
-}
-.tab:hover { background: var(--bg-hover); color: var(--ink); }
-.tab.on { background: var(--bg-select); color: var(--accent); font-weight: 600; }
-.tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tab-x {
-  flex: none; width: 17px; height: 17px; padding: 0;
-  border: 0; border-radius: 4px; background: transparent; color: inherit;
-  display: grid; place-items: center; cursor: pointer;
-  opacity: 0; transition: opacity .12s ease, background .12s ease;
-}
-.tab:hover .tab-x, .tab.on .tab-x, .tab-x:focus-visible { opacity: 1; }
-.tab-x:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); }
-.tab-add {
-  flex: none; width: 23px; height: 23px; padding: 0;
-  border: 0; border-radius: 6px; background: transparent; color: var(--ink-3);
-  display: grid; place-items: center; cursor: pointer;
-}
-.tab-add:hover { background: var(--bg-hover); color: var(--ink); }
+/* ---------------- 多标签栏(已迁 Tailwind;舞台/槽位待 T14) ---------------- */
 
 /* 标签舞台:全部标签保持挂载,仅显示活动标签(状态天然保留) */
 .tabs-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -733,45 +692,7 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .pop-scrim { position: fixed; inset: 0; z-index: 70; }
 
-.ctx-menu {
-  position: fixed;
-  z-index: 80;
-  min-width: 202px;
-  padding: 5px;
-  /* Win11 Mica:半透毛玻璃 + 饱和,blurred 背后内容 */
-  background: var(--mica-bg);
-  -webkit-backdrop-filter: blur(30px) saturate(1.6);
-  backdrop-filter: blur(30px) saturate(1.6);
-  border: 1px solid var(--mica-line);
-  border-radius: 8px;
-  box-shadow: var(--shadow-mica);
-}
-.ctx-item {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%;
-  height: 32px;
-  padding: 0 10px 0 8px;
-  border-radius: 4px;
-  font-size: 12.5px;
-  color: var(--ink);
-  text-align: left;
-}
-/* 固定宽图标槽:无图标项也对齐文字(原生观感) */
-.ctx-ico {
-  flex: none; width: 16px; height: 16px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.ctx-ico svg { width: 16px; height: 16px; color: var(--ink-2); opacity: .92; }
-.ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctx-item:hover:not(:disabled) { background: var(--bg-hover); }
-.ctx-item:active:not(:disabled) { background: var(--bg-active); }
-.ctx-item:disabled { color: var(--ink-disabled); cursor: default; }
-.ctx-item:disabled .ctx-ico svg { color: var(--ink-disabled); }
-.ctx-item.danger { color: var(--danger); }
-.ctx-item.danger .ctx-ico svg { color: var(--danger); opacity: 1; }
-.ctx-item.danger:hover { background: var(--danger-soft); }
-.ctx-sep { height: 1px; margin: 5px 8px; background: var(--line); }
-.ctx-kbd { margin-left: auto; padding-left: 18px; color: var(--ink-3); font-size: 11.5px; }
+/* ctx 菜单已迁 Tailwind(Mica 令牌保留于 ui.tsx);.pop-scrim 仍由 TaskCenter 使用 */
 
 /* ---------------- 任务中心弹层 ---------------- */
 
@@ -843,6 +764,7 @@ input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------------- 对话框 / Sheet ---------------- */
 
+/* overlay/sheet 基座仍由未迁对话框(.sheet 子类)依赖,T14 迁移后删除 */
 .overlay {
   position: fixed; inset: 0;
   background: rgba(24, 28, 32, .32);
@@ -866,12 +788,7 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(6px) scale(.99); } }
 
-.sheet h2 {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 15px; font-weight: 650;
-  margin-bottom: 18px;
-}
-.sheet h2 svg { width: 18px; height: 18px; color: var(--accent); }
+/* Sheet 内标题已由 Tailwind 类接管(ui.tsx Modal) */
 
 .stack { display: flex; flex-direction: column; gap: 16px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -1019,32 +936,7 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
   background: transparent; color: var(--ink); font-size: 12px;
 }
 
-/* ---------------- Toast ---------------- */
-
-.toasts {
-  position: fixed;
-  left: 50%; bottom: 26px;
-  transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  z-index: 120;
-  pointer-events: none;
-}
-.toast {
-  display: flex; align-items: center; gap: 9px;
-  padding: 9px 15px;
-  border-radius: 8px;
-  background: var(--floating);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-float);
-  font-size: 12.5px;
-  animation: rise .16s ease-out;
-  max-width: 520px;
-}
-.toast .ti { width: 15px; height: 15px; flex: none; }
-.toast.ok .ti { color: var(--accent); }
-.toast.err { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
-.toast.err .ti { color: var(--danger); }
-.toast.info .ti { color: var(--ink-2); }
+/* Toast 已迁 Tailwind(sonner 接线见 T14,旧 ToastHost 样式已并 Tailwind 化) */
 
 /* ---------------- 全局拖放高亮 ---------------- */
 
