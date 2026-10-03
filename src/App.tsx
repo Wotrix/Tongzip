@@ -21,6 +21,8 @@ import ExtractDialog from './components/ExtractDialog';
 import PasswordDialog, { ConfirmDialog } from './components/PasswordDialog';
 import RenameDialog from './components/RenameDialog';
 import { TaskHubProvider, ToastHost, useTaskHub, useToast, type TrackedJob } from './components/ui';
+import { Button } from './components/ui/button';
+import { cn } from '@/lib/utils';
 import { IconWarn } from './components/icons';
 import { basename, parentDir } from './lib/format';
 
@@ -32,6 +34,9 @@ export interface AppApi {
 }
 
 interface Ctx { archive: string; info: ArchiveInfo }
+
+/** 提示条内小按钮(旧 .tbtn.sm:27px / 9px 内边距 / 12px 字) */
+const SB_BTN = 'h-[27px] gap-[7px] rounded-md px-[9px] text-xs font-normal shadow-none [&_svg]:size-[15px]';
 
 /** 浏览标签:同一压缩包一个 tab,状态在 TabView 内部自持 */
 interface Tab extends Ctx { id: string }
@@ -382,11 +387,11 @@ function Shell() {
       <div className="main-col">
         <TopBar />
         {engineWarn && (
-          <div className="notice-bar">
-            <IconWarn style={{ width: 15, height: 15, color: 'var(--warn)' }} />
+          <div className="flex flex-none items-center gap-[9px] border-b border-border bg-[var(--warn-soft)] px-4 py-2 text-[12.5px] text-foreground">
+            <IconWarn className="size-[15px] shrink-0 text-[color:var(--warn)]" />
             <span>{engineWarn}</span>
-            <button className="tbtn sm" style={{ marginLeft: 'auto' }} onClick={() => setView('settings')}>去设置</button>
-            <button className="tbtn sm" onClick={() => void window.tz.detectEngine().then((r) => r.ok && setEngineWarn(null))}>重试</button>
+            <Button variant="ghost" size="sm" className={cn(SB_BTN, 'ml-auto')} onClick={() => setView('settings')}>去设置</Button>
+            <Button variant="ghost" size="sm" className={SB_BTN} onClick={() => void window.tz.detectEngine().then((r) => r.ok && setEngineWarn(null))}>重试</Button>
           </div>
         )}
 

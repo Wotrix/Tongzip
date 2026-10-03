@@ -13,7 +13,33 @@ import {
 } from '../components/icons';
 import FileGlyph, { EntryGlyph } from '../components/FileGlyph';
 import { ContextMenu, useToast, type CtxItem } from '../components/ui';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { cn } from '@/lib/utils';
 import { fmtBytes, fmtRatio, basename, parentDir, FORMAT_LABEL } from '../lib/format';
+
+/* ---------- T11 版式令牌:导航行 / 动作行 / 状态栏(平移自 app.css 同名区块) ---------- */
+
+/** 返回/前进/侧栏开关箭头:30px 方形 ghost 图标钮,.on 态用 accent 单点提示 */
+const ARROW_CLS = cn(
+  'inline-flex size-[30px] shrink-0 items-center justify-center rounded-md',
+  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+  'disabled:opacity-50 disabled:hover:bg-transparent',
+);
+/** 面包屑段落:悬停浅底、超宽省略(旧 .crumb) */
+const CRUMB_CLS = cn(
+  'block max-w-[260px] shrink-0 truncate rounded-md px-2 py-1 text-[13px]',
+  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+);
+/** 工具栏按钮皮肤(旧 .tbtn:32px 高 / 12.5px 字 / 15px 图标),与 shadcn Button 尺寸类同层级覆盖 */
+const TB_CLS = cn(
+  'h-8 shrink-0 gap-[7px] rounded-md px-3 text-[12.5px] font-normal whitespace-nowrap',
+  /* button 基座带 [&_svg:not([class*=size-])]:size-4(选择器多一层 :not, specificity 更高),
+     所以图标尺寸必须带 ! 才能压住它 — 否则全部沦为 16px */
+  'has-[>svg]:px-3 shadow-none [&_svg]:size-[15px]!',
+);
+/** 描边按钮(旧 .tbtn.bordered):暗色下沿用页面底,不吃 shadcn 的 input/30 灰底 */
+const TB_OUTLINE_CLS = cn(TB_CLS, 'border-border bg-background dark:bg-background dark:hover:bg-accent');
 
 /** 浏览导航状态(由 App 上提历史,Browser 导航行消费) */
 export interface NavState {
@@ -403,60 +429,65 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   ];
 
   return (
-    <div className="main">
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       {/* 导航行:箭头 + 面包屑 + 搜索 */}
-      <div className="toolbar">
-        <button className={`nav-arrow ${!sidebarHidden ? 'on' : ''}`} title={`${sidebarHidden ? '显示' : '隐藏'}侧边栏 (Alt+B)`}
-          onClick={actions.onToggleSidebar}><IconSidebar /></button>
-        <button className="nav-arrow" title="返回 (Alt+←)" disabled={!nav.canBack} onClick={() => nav.onBack()}><IconBack /></button>
-        <button className="nav-arrow" title="前进 (Alt+→)" disabled={!nav.canForward} onClick={() => nav.onForward()}><IconForward /></button>
-        <div className="crumbs">
-          <button className={`crumb ${!nav.prefix ? 'current' : ''}`} title={nav.archive} onClick={() => nav.onGoto('')}>
-            <IconFolder className="crumb-ico" /><span>{basename(nav.archive)}</span>
+      <div className="flex flex-none items-center gap-1.5 bg-background px-4 py-2">
+        <button className={cn(ARROW_CLS, !sidebarHidden && 'text-primary hover:text-primary')}
+          title={`${sidebarHidden ? '显示' : '隐藏'}侧边栏 (Alt+B)`}
+          onClick={actions.onToggleSidebar}><IconSidebar className="size-4" /></button>
+        <button className={ARROW_CLS} title="返回 (Alt+←)" disabled={!nav.canBack} onClick={() => nav.onBack()}><IconBack className="size-4" /></button>
+        <button className={ARROW_CLS} title="前进 (Alt+→)" disabled={!nav.canForward} onClick={() => nav.onForward()}><IconForward className="size-4" /></button>
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden text-[13px]">
+          <button className={cn(CRUMB_CLS, 'inline-flex items-center gap-1.5 [&>span]:min-w-0 [&>span]:truncate', !nav.prefix && 'font-semibold text-foreground')}
+            title={nav.archive} onClick={() => nav.onGoto('')}>
+            <IconFolder className="size-3.5 shrink-0 text-primary" /><span>{basename(nav.archive)}</span>
           </button>
           {nav.prefix.split('/').filter(Boolean).map((c, i, arr) => {
             const p = arr.slice(0, i + 1).join('/') + '/';
             const last = i === arr.length - 1;
             return (
-              <span key={p} style={{ display: 'inline-flex', alignItems: 'center', minWidth: 0 }}>
-                <span className="crumb-sep"><IconChevronRight /></span>
-                <button className={`crumb ${last ? 'current' : ''}`} onClick={() => nav.onGoto(p)}>{c}</button>
+              <span key={p} className="inline-flex min-w-0 items-center">
+                <span className="inline-flex text-muted-foreground"><IconChevronRight className="size-3.5" /></span>
+                <button className={cn(CRUMB_CLS, last && 'font-semibold text-foreground')} onClick={() => nav.onGoto(p)}>{c}</button>
               </span>
             );
           })}
         </div>
-        <div className="tb-search" title="搜索压缩包内全部条目 (Ctrl+F)">
-          <IconSearch />
-          <input
+        {/* tb-search 类名 = App.tsx Ctrl+F 聚焦选择器钩子,不承载样式 */}
+        <div className="tb-search ml-auto flex h-7 w-[260px] flex-none items-center gap-[7px] rounded-[14px] border border-transparent bg-background px-2.5 text-muted-foreground transition-[border-color,box-shadow] focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--ring)]" title="搜索压缩包内全部条目 (Ctrl+F)">
+          <IconSearch className="size-3.5 shrink-0" />
+          <Input
             value={query}
             placeholder="搜索当前压缩包中的文件…"
             onChange={(e) => onSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') onSearch(''); }}
+            className="h-auto w-auto min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[12.5px] md:text-[12.5px] text-foreground shadow-none outline-none focus-visible:border-transparent focus-visible:ring-0"
           />
         </div>
       </div>
 
       {/* 动作行:解压到(主按钮+下拉) · 添加文件 · 新建压缩包 · 右侧删除/更多 */}
-      <div className="action-row">
-        <div className="tbtn-split">
-          <button className="tbtn primary" onClick={() => actions.onExtract(selEntries)} title="解压 (Ctrl+E)"><IconExtract /> 解压到</button>
-          <button className="tbtn primary split-caret" title="解压选项" aria-label="解压选项"
+      <div className="flex flex-none items-center gap-2 border-b border-border bg-background px-4 py-2">
+        <div className="inline-flex items-stretch">
+          <Button className={cn(TB_CLS, 'rounded-r-none font-semibold')} onClick={() => actions.onExtract(selEntries)} title="解压 (Ctrl+E)"><IconExtract /> 解压到</Button>
+          <Button className={cn(TB_CLS, 'w-auto gap-0 rounded-l-none border-l border-primary-foreground/30 px-[7px] has-[>svg]:px-[7px] [&_svg]:size-[13px]!')}
+            title="解压选项" aria-label="解压选项"
             onClick={(e) => {
               const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
               setExtractMenu({ x: Math.max(8, r.left - 8), y: r.bottom + 4 });
-            }}><IconChevronDown /></button>
+            }}><IconChevronDown /></Button>
         </div>
-        <button className="tbtn bordered" onClick={actions.onAdd} title="将文件添加进当前压缩包"><IconAdd /> 添加文件</button>
-        <button className="tbtn bordered" onClick={actions.onNew} title="新建压缩包 (Ctrl+N)"><IconArchive /> 新建压缩包</button>
-        <button className="tbtn bordered danger" onClick={() => actions.onDelete(selEntries)} disabled={!selEntries.length} title="删除选中条目 (Del)" style={{ marginLeft: 'auto' }}><IconDelete /> 删除</button>
-        <button className="tbtn" onClick={(e) => {
+        <Button variant="outline" className={TB_OUTLINE_CLS} onClick={actions.onAdd} title="将文件添加进当前压缩包"><IconAdd /> 添加文件</Button>
+        <Button variant="outline" className={TB_OUTLINE_CLS} onClick={actions.onNew} title="新建压缩包 (Ctrl+N)"><IconArchive /> 新建压缩包</Button>
+        <Button variant="ghost" className={cn(TB_CLS, 'ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={() => actions.onDelete(selEntries)} disabled={!selEntries.length} title="删除选中条目 (Del)"><IconDelete /> 删除</Button>
+        <Button variant="ghost" className={TB_CLS} onClick={(e) => {
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
           setMoreMenu({ x: r.right - 200, y: r.bottom + 4 });
-        }} title="更多操作"><IconMore /></button>
+        }} title="更多操作"><IconMore /></Button>
       </div>
 
       {/* 目录树 + 文件列表 + 详情面板 */}
-      <div className="list-area">
+      <div className="flex min-h-0 flex-1">
         {treeMode === 'rail' ? (
           <aside className="br-tree rail" title="展开目录树">
             <button className="bt-rail-btn" onClick={() => setTreeMode('full')}><IconTree /></button>
@@ -485,7 +516,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
             })}
           </aside>
         )}
-        <div className="filelist-wrap">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="list-head">
             <label className="ck-box head-ck" title={allChecked ? '取消全选' : '全选'} onClick={toggleAll}>
               <input type="checkbox" checked={allChecked} readOnly />
@@ -621,11 +652,11 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       </div>
 
       {/* 状态栏:左侧计数,中部显示压缩包磁盘路径(过长省略,悬停看全) */}
-      <div className="statusbar">
-        <span><i className="dot" />{rows.length} 个项目{selEntries.length > 0 && ` · 已选中 ${selEntries.length} 个 (${fmtBytes(selSize)})`}</span>
-        {info.hasEncrypted && <span style={{ color: 'var(--warn)' }}>包含加密内容</span>}
-        <span className="sb-path ellipsis" title={archive}>{archive}</span>
-        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
+      <div className="flex h-[30px] flex-none items-center gap-[18px] border-t border-border bg-secondary px-4 text-xs text-muted-foreground">
+        <span className="inline-flex items-center"><i className="mr-[7px] inline-block size-1.5 shrink-0 rounded-full bg-primary align-[1px]" />{rows.length} 个项目{selEntries.length > 0 && ` · 已选中 ${selEntries.length} 个 (${fmtBytes(selSize)})`}</span>
+        {info.hasEncrypted && <span className="text-[color:var(--warn)]">包含加密内容</span>}
+        <span className="min-w-0 flex-1 truncate font-mono" title={archive}>{archive}</span>
+        <span className="ml-auto font-mono">
           {searching ? `搜索: ${query.trim()}` : `${info.type.toUpperCase()} · ${fmtBytes(info.physSize)}`}
         </span>
       </div>

@@ -144,31 +144,7 @@ button { cursor: pointer; }
 
 .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-.main { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
-
-/* ---------------- 左侧导航栏(已迁 Tailwind) ---------------- */
-
-/* ---------------- 顶栏(已迁 Tailwind;仅余共用件) ---------------- */
-
-/* 搜索框(Browser .br-nav 共用) */
-.tb-search {
-  -webkit-app-region: no-drag;
-  width: 260px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border-radius: 14px;
-  border: 1px solid transparent;
-  background: var(--bg);
-  color: var(--ink-3);
-  transition: border-color .15s, box-shadow .15s;
-}
-.tb-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
-.tb-search svg { width: 14px; height: 14px; flex: none; }
-.tb-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-size: 12.5px; }
-.tb-search input::placeholder { color: var(--ink-3); }
+/* ---------------- 顶栏 / 导航行(已迁 Tailwind;仅余共用件) ---------------- */
 
 .icon-btn {
   width: 34px; height: 34px;
@@ -183,54 +159,6 @@ button { cursor: pointer; }
 .icon-btn.on { background: var(--accent-soft); color: var(--accent); }
 .icon-btn svg { width: 17px; height: 17px; }
 
-/* ---------------- 提示条 ---------------- */
-
-.notice-bar {
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px 16px;
-  background: var(--warn-soft);
-  color: var(--ink);
-  border-bottom: 1px solid var(--line);
-  font-size: 12.5px;
-}
-
-/* ---------------- 面包屑(顶栏内) ---------------- */
-
-.nav-arrow {
-  width: 30px; height: 30px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-ctl);
-  color: var(--ink-2);
-}
-.nav-arrow:hover:not(:disabled) { background: var(--bg-hover); color: var(--ink); }
-.nav-arrow:disabled { color: var(--ink-disabled); cursor: default; }
-.nav-arrow svg { width: 16px; height: 16px; }
-/* 侧边栏开关:开启态用 accent 单点提示 */
-.nav-arrow.on { color: var(--accent); }
-.nav-arrow.on:hover:not(:disabled) { color: var(--accent); }
-
-.crumbs {
-  flex: 1; min-width: 0;
-  display: flex; align-items: center; gap: 2px;
-  overflow: hidden;
-  font-size: 13px;
-}
-.crumb {
-  padding: 4px 8px;
-  border-radius: var(--r-ctl);
-  color: var(--ink-2);
-  white-space: nowrap;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.crumb:hover { background: var(--bg-hover); color: var(--ink); }
-.crumb.current { color: var(--ink); font-weight: 600; }
-.crumb.has-ico, .crumb > .crumb-ico { display: inline-flex; align-items: center; gap: 6px; }
-.crumb-ico { width: 14px; height: 14px; color: var(--accent); flex: none; }
-.crumb-sep { color: var(--ink-3); display: inline-flex; }
-.crumb-sep svg { width: 14px; height: 14px; }
-
 /* ---------------- 多标签栏(已迁 Tailwind;舞台/槽位待 T14) ---------------- */
 
 /* 标签舞台:全部标签保持挂载,仅显示活动标签(状态天然保留) */
@@ -238,26 +166,7 @@ button { cursor: pointer; }
 .tab-slot { flex: 1; min-height: 0; display: flex; }
 .tab-slot[hidden] { display: none; }
 
-/* ---------------- 工具栏(导航行:箭头+面包屑+搜索) ---------------- */
-
-.toolbar {
-  flex: none;
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 16px;
-  background: var(--bg);
-}
-/* 与按钮同排时收窄搜索框,留出面包屑空间 */
-.toolbar .tb-search { width: 260px; flex: none; margin-left: auto; }
-.tb-sep { width: 1px; height: 22px; background: var(--line); margin: 0 5px; }
-
-/* 动作行:解压到(主按钮+下拉) · 添加 · 新建 · 右侧删除/更多 */
-.action-row {
-  flex: none;
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg);
-}
+/* 工具栏按钮(导航行/动作行已迁 Tailwind;.tbtn 基座仍被四个对话框用,T14 后删) */
 
 .tbtn {
   height: 32px;
@@ -286,33 +195,9 @@ button { cursor: pointer; }
 .tbtn.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .tbtn.primary:disabled { background: var(--line); color: var(--ink-disabled); }
 
-.tbtn.danger { color: var(--danger); }
-.tbtn.danger:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
-
 .tbtn.sm { height: 27px; padding: 0 9px; font-size: 12px; }
 
-/* 主按钮+下拉分体 */
-.tbtn-split { display: inline-flex; align-items: stretch; }
-.tbtn-split .tbtn:first-child { border-radius: var(--r-ctl) 0 0 var(--r-ctl); }
-.tbtn-split .split-caret {
-  padding: 0 7px; gap: 0;
-  border-radius: 0 var(--r-ctl) var(--r-ctl) 0;
-  border-left: 1px solid color-mix(in srgb, var(--accent-ink) 32%, transparent);
-}
-.tbtn-split .split-caret svg { width: 13px; height: 13px; }
-.tbtn.primary.split-caret:hover:not(:disabled) { background: var(--accent-hover); }
-
-/* 工具栏右侧切换按钮(详细信息等) */
-.tbtn.tb-push { margin-left: auto; }
-.tbtn.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.tbtn.on:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 16%, var(--bg)); color: var(--accent); }
-
 /* ---------------- 文件列表 ---------------- */
-
-.filelist-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-
-/* 列表 + 预览并排区 */
-.list-area { flex: 1; min-height: 0; display: flex; }
 
 /* ---------------- 目录树面板 ---------------- */
 .br-tree {
@@ -567,8 +452,6 @@ button { cursor: pointer; }
 .fx-enc { color: var(--warn); }
 
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 状态栏:压缩包磁盘路径,占满中段并可省略 */
-.statusbar .sb-path { flex: 1; min-width: 0; font-family: var(--font-mono); }
 
 .empty-note {
   padding: 60px 0;
@@ -577,22 +460,7 @@ button { cursor: pointer; }
   font-size: 13px;
 }
 
-/* ---------------- 状态栏 ---------------- */
-
-.statusbar {
-  flex: none;
-  height: 30px;
-  display: flex; align-items: center; gap: 18px;
-  padding: 0 16px;
-  border-top: 1px solid var(--line);
-  background: var(--bg-chrome);
-  color: var(--ink-3);
-  font-size: 12px;
-}
-.statusbar .dot {
-  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent); margin-right: 7px; vertical-align: 1px;
-}
+/* 状态栏 / .main / .list-area / .filelist-wrap 已迁 Tailwind(Browser.tsx) */
 
 /* 历史任务行 / 任务中心弹层 / 进度条已迁 Tailwind(Home、TaskCenter、TasksPage;indet 动画见 index.css) */
 

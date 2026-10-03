@@ -93,6 +93,8 @@
 /* 映射为 tailwind 工具类: bg-background / border-border / text-primary ... */
 @theme inline {
   --font-sans: "Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  /* 等宽栈沿用旧 --font-mono,让 font-mono 工具类(状态栏路径等)与迁移前逐字一致 */
+  --font-mono: "Cascadia Mono", "Consolas", "Menlo", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
