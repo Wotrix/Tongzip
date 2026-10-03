@@ -7,6 +7,7 @@ import { useState } from 'react';
 import TaskCenter from './TaskCenter';
 import { IconMin, IconMax, IconClose, IconBell } from './icons';
 import { useTaskHub } from './ui';
+import { cn } from '@/lib/utils';
 
 export default function TopBar() {
   const { jobs } = useTaskHub();
@@ -14,17 +15,30 @@ export default function TopBar() {
   const [tcOpen, setTcOpen] = useState(false);
 
   return (
-    <header className="topbar">
-      <div className="tb-spacer" />
-      <div className="tb-actions">
-        <button className={`icon-btn ${tcOpen ? 'on' : ''}`} title="任务通知" onClick={() => setTcOpen((v) => !v)}>
+    <header className="app-drag relative flex h-[42px] shrink-0 items-center pl-2.5 bg-secondary">
+      <div className="flex-1 min-w-0" />
+      <div className="app-nodrag ml-auto flex items-center gap-0.5">
+        <button
+          title="任务通知"
+          onClick={() => setTcOpen((v) => !v)}
+          className={cn(
+            'relative inline-flex size-[34px] items-center justify-center rounded-md',
+            'text-muted-foreground transition-colors',
+            'hover:text-foreground hover:bg-accent active:bg-accent',
+            tcOpen && 'bg-primary/10 text-primary',
+          )}
+        >
           <BellGlyph running={running > 0} />
-          {running > 0 && <span className="task-badge">{running}</span>}
+          {running > 0 && (
+            <span className="absolute right-[3px] top-[3px] min-w-[15px] rounded-full bg-primary px-1 text-center text-[10px] font-bold leading-[15px] text-primary-foreground ring-2 ring-secondary">
+              {running}
+            </span>
+          )}
         </button>
         <span style={{ width: 6 }} />
-        <button className="win-btn" title="最小化" onClick={() => window.tz.winMinimize()}><IconMin /></button>
-        <button className="win-btn" title="最大化 / 还原" onClick={() => window.tz.winMaximize()}><IconMax /></button>
-        <button className="win-btn close" title="关闭" onClick={() => window.tz.winClose()}><IconClose /></button>
+        <button className="app-nodrag inline-flex h-[42px] w-[46px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="最小化" onClick={() => window.tz.winMinimize()}><IconMin className="size-3.5" /></button>
+        <button className="app-nodrag inline-flex h-[42px] w-[46px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="最大化 / 还原" onClick={() => window.tz.winMaximize()}><IconMax className="size-3.5" /></button>
+        <button className="app-nodrag inline-flex h-[42px] w-[46px] items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground" title="关闭" onClick={() => window.tz.winClose()}><IconClose className="size-3.5" /></button>
       </div>
 
       {tcOpen && <TaskCenter onClose={() => setTcOpen(false)} />}
@@ -36,7 +50,7 @@ export default function TopBar() {
 function BellGlyph({ running }: { running: boolean }) {
   return (
     <span style={running ? { animation: 'tcbreathe 1.6s ease-in-out infinite', display: 'inline-flex' } : { display: 'inline-flex' }}>
-      <IconBell />
+      <IconBell className="size-[17px]" />
       <style>{`@keyframes tcbreathe { 0%,100%{opacity:1} 50%{opacity:.55} }`}</style>
     </span>
   );

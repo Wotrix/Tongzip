@@ -122,7 +122,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+/* color 不写死 inherit:无 layer 规则会压过 Tailwind @layer 工具类,交给自然继承;font/background/border/cursor 为实测零漂移的基座规则 */
+button { font: inherit; background: none; border: 0; cursor: pointer; }
 input, select, textarea { font: inherit; color: inherit; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -142,83 +143,11 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .main { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
 
-/* ---------------- 左侧导航栏 ---------------- */
+/* ---------------- 左侧导航栏(已迁 Tailwind) ---------------- */
 
-.sidebar {
-  flex: none;
-  width: 216px;
-  display: flex; flex-direction: column;
-  background: var(--bg-chrome);
-  border-right: 1px solid var(--line);
-  padding: 14px 10px 12px;
-  gap: 14px;
-  transition: width .16s ease, padding .16s ease, border-right-color .16s ease;
-}
-/* 折叠态(外部打开压缩包浏览时默认):宽度收 0,内容淡出不可交互 */
-.sidebar.collapsed {
-  width: 0;
-  padding-left: 0; padding-right: 0;
-  border-right-width: 0;
-  border-right-color: transparent;
-  overflow: hidden;
-}
-.sidebar.collapsed :is(.sb-brand, .sb-nav, .sb-foot) { opacity: 0; pointer-events: none; }
-.sidebar :is(.sb-brand, .sb-nav, .sb-foot) { transition: opacity .12s ease; }
-.sb-brand { display: flex; align-items: center; gap: 9px; padding: 2px 6px; font-size: 14.5px; letter-spacing: .01em; }
-.sb-logo {
-  width: 30px; height: 30px; flex: none;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-.sb-logo svg { width: 18px; height: 18px; }
-.sb-brand b { font-weight: 700; }
-.sb-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow: auto; }
-.sb-item {
-  display: flex; align-items: center; gap: 10px;
-  height: 36px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--ink-2);
-  text-align: left;
-  transition: background .12s, color .12s;
-}
-.sb-item svg { width: 17px; height: 17px; flex: none; }
-.sb-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sb-item:hover { background: var(--bg-hover); color: var(--ink); }
-.sb-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.sb-item.browse { border: 1px dashed var(--line-strong); margin-top: 6px; font-size: 12px; height: 32px; color: var(--ink-3); }
-.sb-item.browse.on { border-color: transparent; }
-.sb-badge {
-  margin-left: auto;
-  min-width: 17px; height: 17px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 10.5px; font-weight: 700; font-style: normal;
-  line-height: 17px; text-align: center;
-}
-.sb-foot { text-align: center; font-size: 11px; color: var(--ink-3); letter-spacing: .12em; }
+/* ---------------- 顶栏(已迁 Tailwind;仅余共用件) ---------------- */
 
-/* ---------------- 顶栏 ---------------- */
-
-.topbar {
-  height: 42px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 0 0 10px;
-  background: var(--bg-chrome);
-  position: relative;
-  -webkit-app-region: drag;
-}
-/* 导航箭头/面包屑/搜索已搬入浏览视图(Browser .br-nav),顶栏全视图形态一致,不再画分隔线 */
-.tb-spacer { flex: 1; min-width: 0; }
-
+/* 搜索框(Browser .br-nav 共用) */
 .tb-search {
   -webkit-app-region: no-drag;
   width: 260px;
@@ -238,8 +167,6 @@ input, select, textarea { font: inherit; color: inherit; }
 .tb-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font-size: 12.5px; }
 .tb-search input::placeholder { color: var(--ink-3); }
 
-.tb-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
-
 .icon-btn {
   width: 34px; height: 34px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -252,33 +179,6 @@ input, select, textarea { font: inherit; color: inherit; }
 .icon-btn:active { background: var(--bg-active); }
 .icon-btn.on { background: var(--accent-soft); color: var(--accent); }
 .icon-btn svg { width: 17px; height: 17px; }
-
-.task-badge {
-  position: absolute;
-  top: 3px; right: 3px;
-  min-width: 15px; height: 15px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
-  border: 2px solid var(--bg-chrome);
-  box-sizing: content-box;
-}
-
-.win-btn {
-  width: 46px; height: 42px;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--ink-2);
-  transition: background .12s, color .12s;
-  border-radius: 0;
-}
-.win-btn:hover { background: var(--bg-hover); color: var(--ink); }
-.win-btn.close:hover { background: var(--danger); color: #fff; }
-.win-btn svg { width: 14px; height: 14px; }
 
 /* ---------------- 提示条 ---------------- */
 
