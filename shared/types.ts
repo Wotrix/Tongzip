@@ -201,6 +201,10 @@ export interface Settings {
   showRecentOpen: boolean;
   /** 首页是否显示「最近任务」板块 */
   showRecentTasks: boolean;
+  /** 左侧导航栏宽度(px),可拖 156–260,默认 176 */
+  sidebarWidth: number;
+  /** 浏览文件列表可拖列宽(px):类型/大小/时间,默认 110/110/160 */
+  listColumnWidths: { type: number; size: number; time: number };
 }
 
 /** 启动载荷:通过 argv 打开的初始目标 */

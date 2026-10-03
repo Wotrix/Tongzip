@@ -77,10 +77,16 @@ function Shell() {
   const [glow, setGlow] = useState(false);
   const dragDepth = useRef(0);
   const pwCache = useRef(new Map<string, string>());
-  /* 侧边栏:外部双击打开压缩包时自动隐藏;用户手动开关过一次则本会话尊重其选择 */
+  /* 侧边栏:仅冷启动双击压缩包打开软件时自动隐藏(移交/应用内打开不动);手动开关过一次则尊重其选择;宽度可拖 156–260 并持久化 */
   const [sbHidden, setSbHidden] = useState(false);
+  const [sbW, setSbW] = useState(176);
   const sbTouched = useRef(false);
   const toggleSidebar = useCallback(() => { sbTouched.current = true; setSbHidden((v) => !v); }, []);
+  const resizeSidebar = useCallback((w: number) => {
+    const nu = Math.min(260, Math.max(156, Math.round(w) || 176));
+    setSbW(nu);
+    void window.tz.setSettings({ sidebarWidth: nu });
+  }, []);
 
   const api: AppApi = {
     trackTask: (taskId, kind, onSettled, meta) => hub.track(taskId, kind, onSettled, meta),
@@ -94,6 +100,9 @@ function Shell() {
     void (async () => {
       const s = await window.tz.getSettings();
       setRecents(s.recentArchives ?? []);
+      if (typeof s.sidebarWidth === 'number' && Number.isFinite(s.sidebarWidth)) {
+        setSbW(Math.min(260, Math.max(156, Math.round(s.sidebarWidth))));
+      }
       if (s.accent && s.accent !== 'blue') document.documentElement.dataset.accent = s.accent;
     })();
   }, []);
@@ -204,7 +213,8 @@ function Shell() {
   }, [hub, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- shell / 双击 启动指令 ---------- */
-  const handlePayload = useCallback((p: { kind: 'archive' | 'compress'; paths: string[] }) => {
+  /* coldStart:仅冷启动载荷(getLaunchPayload)会自动折叠侧边栏;运行中二次实例移交不折叠 */
+  const handlePayload = useCallback((p: { kind: 'archive' | 'compress'; paths: string[] }, coldStart = false) => {
     const flag = p.paths.find((x) => x.startsWith('--'));
     const real = p.paths.filter((x) => !x.startsWith('--'));
     if (p.kind === 'archive') {
@@ -213,7 +223,7 @@ function Shell() {
       if (flag === '--auto-extract') void quickExtract(archive, false);
       else if (flag === '--extract-here') void quickExtract(archive, true);
       else if (flag === '--extract-dialog') setExtract({ archive, entries: [] });
-      else { if (!sbTouched.current) setSbHidden(true); void openInTab(archive); }
+      else { if (coldStart && !sbTouched.current) setSbHidden(true); void openInTab(archive); }
     } else {
       const EXT_TOKENS = ['.7z', '.zip', '.tar.gz', '.tar.bz2', '.tar.xz', '.tar.zst', '.tar'];
       const ext = real.find((x) => EXT_TOKENS.includes(x.toLowerCase()));
@@ -225,7 +235,7 @@ function Shell() {
   useEffect(() => {
     void (async () => {
       const p = await window.tz.getLaunchPayload();
-      if (p) handlePayload(p);
+      if (p) handlePayload(p, true);
     })();
     return window.tz.onLaunch(handlePayload);
   }, [handlePayload]);
@@ -379,6 +389,8 @@ function Shell() {
       <Sidebar
         view={view}
         hidden={sbHidden && view === 'browse'}
+        width={sbW}
+        onResize={resizeSidebar}
         runningCount={runningCount}
         activeArchive={activeTab ? basename(activeTab.archive) : null}
         onNav={(v) => { if (v !== 'browse' || tabs.length) setView(v); }}

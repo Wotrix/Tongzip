@@ -45,6 +45,8 @@ const DEFAULTS: Settings = {
   defaultLevel: 5,
   showRecentOpen: true,
   showRecentTasks: true,
+  sidebarWidth: 176,
+  listColumnWidths: { type: 110, size: 110, time: 160 },
 };
 const settingsFile = () => path.join(app.getPath('userData'), 'tongzip-settings.json');
 const store = {
@@ -77,10 +79,12 @@ function parseArgv(argv: string[]): LaunchPayload | null {
   /* 不能直接 slice:dev 下 second-instance 的 argv 会被 Electron 注入额外开关(--allow-file-access…)
    * 及应用目录参数,统一过滤后只剩自己的开关与文件路径 */
   const appDir = path.resolve(app.getAppPath());
+  /* 入口(main.js)必须排除:dev 移交时 Electron 重排 argv,入口可能落在 --open 与其目标之间被当成目标 */
+  const entries = new Set([appDir, path.resolve(__dirname, 'main.js')]);
   const args = argv.slice(1).filter((a) => {
     if (OWN_SWITCHES.has(a)) return true;
     if (a.startsWith('-')) return false;
-    return path.resolve(a) !== appDir;
+    return !entries.has(path.resolve(a));
   });
   const switchOf = (name: string) => args.findIndex((a) => a === `--${name}`);
 

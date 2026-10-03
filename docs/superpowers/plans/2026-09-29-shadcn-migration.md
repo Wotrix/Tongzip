@@ -299,13 +299,16 @@ export const IconClose = (p: { className?: string }) => <X size={16} strokeWidth
 - Check: 双击目录展开/折叠、点目录过滤列表行为不变。
 - Commit `refactor(ui): 目录树迁移`
 
-### Task 13: 文件列表 + 详情面板
+### Task 13: 文件列表 + 详情面板（含响应式/拖宽新规格，见 specs/2026-09-29-browse-responsive-resize-design.md）
 
-**Files:** Modify Browser.tsx 列表/面板区段、app.css（删 .row/.list-head/.detail-pane 区）
-- 行网格保留 `grid grid-cols-[30px_minmax(0,1fr)_110px_110px_160px]`（即旧 clamp 列宽），表头 `sticky top-0`（旧坑：容器 padding 导致 sticky 留缝，padding 移到内层）；行高 `--row-h` 平移为 `h-8`；选中 `bg-primary/10`。
+**Files:** Modify Browser.tsx 列表/面板区段、Sidebar.tsx（拖宽+收紧留白+默认 176）、App.tsx（sbWidth 状态 + 冷启动才折叠）、shared/types.ts + electron/main.ts（Settings 新增 sidebarWidth/listColumnWidths）、app.css（删 .row/.list-head/.ck-box/.entry-list/.detail-pane 区）
+- 行网格列宽改 CSS 变量单源 `30px minmax(120px,1fr) var(--col-type) var(--col-size) var(--col-time)`，表头与行共用；右侧三列表头右缘拖动手柄（clamp 72–320，时间下限 110，双击复位 110/110/160），松手写 Settings；行高 `h-8`；选中 `bg-primary/10`。
+- 表头挪进滚动容器内 `sticky top-0`（根治滚动条错位）；窄容不下时保持 min-width 横向滚动。
+- 工具栏：Browser 根加 `@container`，动作行文字 `@max-[640px]:hidden` 图标化；搜索框改 `flex-1 min-w-[140px] max-w-[260px]`。
+- 侧边栏：默认 216→176，右缘手柄 156–260 可拖、双击复位、持久化；自动折叠仅限冷启动载荷（onLaunch 移交不折）。
 - 详情面板：`w-[clamp(232px,23vw,300px)]` 保留响应式；动作四按钮 `grid grid-cols-4`（ghost 小尺寸）；字段行 label `text-muted-foreground`。
-- Check: CDP 回归断言——1280×800 展开态 `document.scrollWidth===innerWidth`；排序点列头、Shift/Ctrl 多选、F2 重命名（保留原交互，样式 `hover:bg-accent` 化）、按选中解压路由。
-- Commit `refactor(ui): 文件列表与详情面板迁移`
+- Check: CDP 探针 tzm16——拖动后变量生效且表头/行逐列对齐；带滚动条错位反证；双击复位；reload 后 settings 回读；860×560 无溢出且动作行图标态；侧边栏 176/拖动/复位/持久化；移交不折叠、冷启动折叠；排序点列头、Shift/Ctrl 多选、按选中解压路由不变。
+- Commit `refactor(ui): 文件列表与详情面板迁移`(另补一个 `feat(ui): 列宽/侧边栏可拖与响应式` 逻辑提交亦可，实施时定)
 
 ---
 

@@ -41,6 +41,26 @@ const TB_CLS = cn(
 /** 描边按钮(旧 .tbtn.bordered):暗色下沿用页面底,不吃 shadcn 的 input/30 灰底 */
 const TB_OUTLINE_CLS = cn(TB_CLS, 'border-border bg-background dark:bg-background dark:hover:bg-accent');
 
+/* ---------- T13 版式令牌:文件列表(列宽 CSS 变量单一真相,表头与行共用同一网格模板) ---------- */
+const COL_DEFAULTS = { type: 110, size: 110, time: 160 } as const;
+type ColKey = keyof typeof COL_DEFAULTS;
+/** 每列拖动范围 [下限, 上限];时间列下限要容得下完整时间戳 */
+const COL_LIMITS: Record<ColKey, [number, number]> = { type: [72, 320], size: [72, 320], time: [110, 320] };
+const clampCol = (k: ColKey, w: number) => Math.min(COL_LIMITS[k][1], Math.max(COL_LIMITS[k][0], Math.round(w) || COL_DEFAULTS[k]));
+/** 表头/行共用:名称列弹性但保底 120px;窄容不下时 min-w 强制溢出→滚动容器横滚,表头随行对齐 */
+const LIST_GRID = cn(
+  'grid grid-cols-[30px_minmax(120px,1fr)_var(--col-type)_var(--col-size)_var(--col-time)] items-center pl-3 pr-4',
+  'min-w-[calc(30px_+_120px_+_var(--col-type)_+_var(--col-size)_+_var(--col-time)_+_28px)]',
+);
+/** 自绘对勾的原生复选框(旧 .ck-box input 的 appearance:none 画法平移;勾选色仍用 :root 的 --accent-ink) */
+const CK_CLS = cn(
+  'relative size-[15px] shrink-0 cursor-pointer appearance-none rounded-[4px] border-[1.5px] border-input bg-background',
+  'transition-[background,border-color] duration-100 hover:border-primary',
+  'checked:border-primary checked:bg-primary',
+  "after:absolute after:left-[4px] after:top-[1px] after:h-[9px] after:w-[5px] after:rotate-45 after:content-['']",
+  'after:border-b-[1.8px] after:border-r-[1.8px] after:border-[color:var(--accent-ink)] after:opacity-0 checked:after:opacity-100',
+);
+
 /** 浏览导航状态(由 App 上提历史,Browser 导航行消费) */
 export interface NavState {
   archive: string;
@@ -106,6 +126,45 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   const [pvBusy, setPvBusy] = useState(false);
   const lastClick = useRef<string | null>(null);
   const dragging = useRef(false);
+
+  /* 可拖三列列宽:CSS 变量挂在滚动容器上作单一真相;松手才写设置(避免每帧 IO);挂载时回读,非法值回默认 */
+  const [cols, setCols] = useState<Record<ColKey, number>>({ ...COL_DEFAULTS });
+  const [colDrag, setColDrag] = useState<ColKey | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const c = (await window.tz.getSettings()).listColumnWidths;
+      if (!c) return;
+      setCols((p) => ({
+        type: clampCol('type', typeof c.type === 'number' ? c.type : p.type),
+        size: clampCol('size', typeof c.size === 'number' ? c.size : p.size),
+        time: clampCol('time', typeof c.time === 'number' ? c.time : p.time),
+      }));
+    })();
+  }, []);
+  const commitCols = (next: Record<ColKey, number>) => {
+    setCols(next);
+    void window.tz.setSettings({ listColumnWidths: next });
+  };
+  const startColDrag = (k: ColKey, e: React.PointerEvent) => {
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const snapshot = cols;
+    const at = (ev: PointerEvent) => clampCol(k, snapshot[k] + ev.clientX - startX);
+    const move = (ev: PointerEvent) => setCols((p) => ({ ...p, [k]: at(ev) }));
+    const up = (ev: PointerEvent) => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      setColDrag(null);
+      commitCols({ ...snapshot, [k]: at(ev) });
+    };
+    setColDrag(k);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  };
 
   /* 搜索时清空选中 */
   useEffect(() => { setSel(new Set()); }, [query]);
@@ -361,10 +420,31 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   };
 
   const sortHead = (k: SortKey, label: string, right = false) => (
-    <button onClick={() => { if (sortKey === k) setAsc(!asc); else { setSortKey(k); setAsc(k === 'name'); } }}
-      className={`${sortKey === k ? 'active' : ''} ${right ? 'r' : ''}`}>
-      {label}{sortKey === k ? (asc ? ' ↑' : ' ↓') : ''}
-    </button>
+    <div className={cn('relative flex h-full min-w-0 items-center', right && 'justify-end')}>
+      <button
+        onClick={() => { if (sortKey === k) setAsc(!asc); else { setSortKey(k); setAsc(k === 'name'); } }}
+        className={cn(
+          'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground',
+          right && 'justify-end',
+          sortKey === k && 'font-semibold text-primary',
+        )}>
+        {label}{sortKey === k ? (asc ? ' ↑' : ' ↓') : ''}
+      </button>
+      {/* 可拖列手柄:骑在本列右缘(=下一列左界)上;双击回默认 */}
+      {k !== 'name' && (
+        <span
+          aria-hidden
+          title="拖拽调整列宽 · 双击恢复默认"
+          onPointerDown={(e) => startColDrag(k, e)}
+          onDoubleClick={() => commitCols({ ...cols, [k]: COL_DEFAULTS[k] })}
+          className={cn(
+            'absolute -right-[3px] top-0 z-10 h-full w-[6px] cursor-col-resize touch-none',
+            'after:absolute after:inset-y-1 after:right-[2px] after:w-[2px] after:rounded-full after:bg-transparent after:transition-colors hover:after:bg-primary/40',
+            colDrag === k && 'after:bg-primary/60',
+          )}
+        />
+      )}
+    </div>
   );
 
   const selSize = info.entries.filter((e) => sel.has(e.path)).reduce((s, e) => s + e.size, 0);
@@ -429,7 +509,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className="@container flex min-h-0 flex-1 flex-col bg-background">
       {/* 导航行:箭头 + 面包屑 + 搜索 */}
       <div className="flex flex-none items-center gap-1.5 bg-background px-4 py-2">
         <button className={cn(ARROW_CLS, !sidebarHidden && 'text-primary hover:text-primary')}
@@ -454,7 +534,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
           })}
         </div>
         {/* tb-search 类名 = App.tsx Ctrl+F 聚焦选择器钩子,不承载样式 */}
-        <div className="tb-search ml-auto flex h-7 w-[260px] flex-none items-center gap-[7px] rounded-[14px] border border-transparent bg-background px-2.5 text-muted-foreground transition-[border-color,box-shadow] focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--ring)]" title="搜索压缩包内全部条目 (Ctrl+F)">
+        <div className="tb-search ml-auto flex h-7 min-w-[140px] max-w-[260px] flex-1 basis-0 items-center gap-[7px] rounded-[14px] border border-transparent bg-background px-2.5 text-muted-foreground transition-[border-color,box-shadow] focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--ring)]" title="搜索压缩包内全部条目 (Ctrl+F)">
           <IconSearch className="size-3.5 shrink-0" />
           <Input
             value={query}
@@ -469,7 +549,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       {/* 动作行:解压到(主按钮+下拉) · 添加文件 · 新建压缩包 · 右侧删除/更多 */}
       <div className="flex flex-none items-center gap-2 border-b border-border bg-background px-4 py-2">
         <div className="inline-flex items-stretch">
-          <Button className={cn(TB_CLS, 'rounded-r-none font-semibold')} onClick={() => actions.onExtract(selEntries)} title="解压 (Ctrl+E)"><IconExtract /> 解压到</Button>
+          <Button className={cn(TB_CLS, 'rounded-r-none font-semibold')} onClick={() => actions.onExtract(selEntries)} title="解压 (Ctrl+E)"><IconExtract /><span className="@max-[640px]:hidden">解压到</span></Button>
           <Button className={cn(TB_CLS, 'w-auto gap-0 rounded-l-none border-l border-primary-foreground/30 px-[7px] has-[>svg]:px-[7px] [&_svg]:size-[13px]!')}
             title="解压选项" aria-label="解压选项"
             onClick={(e) => {
@@ -477,9 +557,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               setExtractMenu({ x: Math.max(8, r.left - 8), y: r.bottom + 4 });
             }}><IconChevronDown /></Button>
         </div>
-        <Button variant="outline" className={TB_OUTLINE_CLS} onClick={actions.onAdd} title="将文件添加进当前压缩包"><IconAdd /> 添加文件</Button>
-        <Button variant="outline" className={TB_OUTLINE_CLS} onClick={actions.onNew} title="新建压缩包 (Ctrl+N)"><IconArchive /> 新建压缩包</Button>
-        <Button variant="ghost" className={cn(TB_CLS, 'ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={() => actions.onDelete(selEntries)} disabled={!selEntries.length} title="删除选中条目 (Del)"><IconDelete /> 删除</Button>
+        <Button variant="outline" className={TB_OUTLINE_CLS} onClick={actions.onAdd} title="将文件添加进当前压缩包"><IconAdd /><span className="@max-[640px]:hidden">添加文件</span></Button>
+        <Button variant="outline" className={TB_OUTLINE_CLS} onClick={actions.onNew} title="新建压缩包 (Ctrl+N)"><IconArchive /><span className="@max-[640px]:hidden">新建压缩包</span></Button>
+        <Button variant="ghost" className={cn(TB_CLS, 'ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive')} onClick={() => actions.onDelete(selEntries)} disabled={!selEntries.length} title="删除选中条目 (Del)"><IconDelete /><span className="@max-[640px]:hidden">删除</span></Button>
         <Button variant="ghost" className={TB_CLS} onClick={(e) => {
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
           setMoreMenu({ x: r.right - 200, y: r.bottom + 4 });
@@ -525,18 +605,24 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
           </aside>
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="list-head">
-            <label className="ck-box head-ck" title={allChecked ? '取消全选' : '全选'} onClick={toggleAll}>
-              <input type="checkbox" checked={allChecked} readOnly />
-            </label>
-            {sortHead('name', '名称')}
-            {sortHead('type', '类型')}
-            {sortHead('size', '大小', true)}
-            {sortHead('time', '修改时间', true)}
-          </div>
-          <div className="entry-list" onContextMenu={(e) => onContextMenu(e, null)}>
+          {/* 旧坑根治:表头必须在滚动容器内 sticky top-0——此前与行列表平级,纵向滚动条一现行整体左移错位。
+              list-head/entry-list/row/ck-box 类名保留作 CDP 探针对选择器钩子,不承载样式 */}
+          <div
+            className={cn('entry-list min-h-0 flex-1 overflow-auto pb-5', colDrag && 'select-none')}
+            style={{ '--col-type': `${cols.type}px`, '--col-size': `${cols.size}px`, '--col-time': `${cols.time}px` } as React.CSSProperties}
+            onContextMenu={(e) => onContextMenu(e, null)}
+          >
+            <div className={cn(LIST_GRID, 'list-head sticky top-0 z-[1] h-8 border-b border-border bg-background text-xs text-muted-foreground')}>
+              <label className="ck-box head-ck flex h-full items-center justify-center" title={allChecked ? '取消全选' : '全选'} onClick={toggleAll}>
+                <input type="checkbox" checked={allChecked} readOnly className={CK_CLS} />
+              </label>
+              {sortHead('name', '名称')}
+              {sortHead('type', '类型')}
+              {sortHead('size', '大小', true)}
+              {sortHead('time', '修改时间', true)}
+            </div>
             {rows.length === 0 && (
-              <div className="empty-note">{searching ? `没有匹配 “${query.trim()}” 的文件` : '空文件夹'}</div>
+              <div className="empty-note py-16 text-center text-[13px] text-muted-foreground">{searching ? `没有匹配 “${query.trim()}” 的文件` : '空文件夹'}</div>
             )}
             {rows.map((r) => (
               <Row
@@ -563,16 +649,16 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         </div>
 
         {showDetails && (
-          <aside className="detail-pane">
-            <button className="icon-btn dp-close" title="关闭面板 (Alt+D)" onClick={() => setShowDetails(false)}><IconClose style={{ width: 12, height: 12 }} /></button>
+          <aside className="detail-pane relative flex w-[clamp(232px,23vw,300px)] flex-none flex-col overflow-auto border-l border-border bg-secondary">
+            <button className="dp-close absolute right-2 top-2 z-[2] grid size-[26px] place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="关闭面板 (Alt+D)" onClick={() => setShowDetails(false)}><IconClose className="size-3" /></button>
             {detail ? (
               <>
-                <div className="dp-hero">
-                  <span className="dp-glyph"><FileGlyph name={detail.name} isDir={detail.isDir} encrypted={detail.encrypted} size={40} /></span>
-                  <b className="dp-name" title={detail.path}>{detail.name}</b>
-                  <span className="dp-sub">{typeLabel(detail)} · {detail.isDir ? '' : fmtBytes(detail.size)}</span>
+                <div className="dp-hero flex flex-col items-center gap-1.5 px-4 pb-3.5 pt-[26px] text-center">
+                  <span className="dp-glyph mb-1.5 grid size-16 place-items-center rounded-[14px] border border-border bg-primary/10"><FileGlyph name={detail.name} isDir={detail.isDir} encrypted={detail.encrypted} size={40} /></span>
+                  <b className="dp-name break-all text-[13.5px] font-semibold" title={detail.path}>{detail.name}</b>
+                  <span className="dp-sub text-[11.5px] text-muted-foreground">{typeLabel(detail)} · {detail.isDir ? '' : fmtBytes(detail.size)}</span>
                 </div>
-                <div className="dp-acts">
+                <div className="dp-acts flex gap-1.5 border-b border-border px-3.5 pb-3">
                   {!detail.isDir && <DpAct icon={<IconOpen />} label="打开" onClick={() => actions.onOpenFile(detail)} />}
                   <DpAct icon={<IconExtract />} label="解压" onClick={() => actions.onExtract([detail.path])} />
                   {!searching && <DpAct icon={<IconDelete />} label="删除" danger onClick={() => actions.onDelete([detail.path])} />}
@@ -581,51 +667,51 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
                     setPanelMenu({ x: Math.max(8, r.right - 190), y: r.bottom + 4 });
                   }} />
                 </div>
-                <div className="dp-info">
-                  <div className="dp-row"><span>类型</span><b>{detail.isDir ? '文件夹' : typeLabel(detail)}</b></div>
-                  <div className="dp-row"><span>大小</span><b>{detail.isDir ? '-' : fmtBytes(detail.size)}</b></div>
-                  {!!detail.packed && !detail.isDir && <div className="dp-row"><span>压缩后</span><b>{fmtBytes(detail.packed)} ({fmtRatio(detail.size, detail.packed)})</b></div>}
-                  <div className="dp-row"><span>修改时间</span><b>{detail.mtime || '-'}</b></div>
-                  <div className="dp-row"><span>位置</span><b className="ellipsis" title={`${archive}/${detail.path}`}>{detail.path}</b></div>
-                  {detail.encrypted && <div className="dp-row"><span>加密</span><b style={{ color: 'var(--warn)' }}>已加密</b></div>}
+                <div className="dp-info flex flex-col gap-[7px] px-3.5 py-2.5">
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>类型</span><b>{detail.isDir ? '文件夹' : typeLabel(detail)}</b></div>
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>大小</span><b>{detail.isDir ? '-' : fmtBytes(detail.size)}</b></div>
+                  {!!detail.packed && !detail.isDir && <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>压缩后</span><b>{fmtBytes(detail.packed)} ({fmtRatio(detail.size, detail.packed)})</b></div>}
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>修改时间</span><b>{detail.mtime || '-'}</b></div>
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>位置</span><b className="ellipsis" title={`${archive}/${detail.path}`}>{detail.path}</b></div>
+                  {detail.encrypted && <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>加密</span><b style={{ color: 'var(--warn)' }}>已加密</b></div>}
                 </div>
-                <div className="dp-preview">
-                  {pvBusy && <div className="empty-note">正在提取预览…</div>}
-                  {!pvBusy && detail.isDir && <div className="empty-note">文件夹不支持预览</div>}
-                  {!pvBusy && !detail.isDir && !pv && <div className="empty-note">该文件暂无可用预览</div>}
+                <div className="dp-preview px-3.5 pb-[18px] pt-1">
+                  {pvBusy && <div className="empty-note py-[22px] text-center text-xs text-muted-foreground">正在提取预览…</div>}
+                  {!pvBusy && detail.isDir && <div className="empty-note py-[22px] text-center text-xs text-muted-foreground">文件夹不支持预览</div>}
+                  {!pvBusy && !detail.isDir && !pv && <div className="empty-note py-[22px] text-center text-xs text-muted-foreground">该文件暂无可用预览</div>}
                   {!pvBusy && pv?.entry.path === detail.path && pv.data.kind === 'text' && (
-                    <pre className="pv-text">{pv.data.text}{pv.data.truncated ? '\n…(内容过大,已截断)' : ''}</pre>
+                    <pre className="pv-text m-0 max-h-[320px] overflow-auto rounded-md border border-border bg-background px-2.5 py-2 font-mono text-[11.5px] leading-[1.55] whitespace-pre-wrap break-all text-secondary-foreground">{pv.data.text}{pv.data.truncated ? '\n…(内容过大,已截断)' : ''}</pre>
                   )}
                   {!pvBusy && pv?.entry.path === detail.path && pv.data.kind === 'image' && (
-                    <img className="pv-img" src={pv.data.dataUrl} alt={pv.data.name} />
+                    <img className="pv-img mx-auto mt-1.5 block h-auto max-w-full rounded-md border border-border bg-background" src={pv.data.dataUrl} alt={pv.data.name} />
                   )}
                 </div>
               </>
             ) : selFiles.length > 1 ? (
               <>
-                <div className="dp-hero">
-                  <b className="dp-name">已选中 {selFiles.length} 项</b>
-                  <span className="dp-sub">合计 {fmtBytes(selSize)}</span>
+                <div className="dp-hero flex flex-col items-center gap-1.5 px-4 pb-3.5 pt-[26px] text-center">
+                  <b className="dp-name break-all text-[13.5px] font-semibold">已选中 {selFiles.length} 项</b>
+                  <span className="dp-sub text-[11.5px] text-muted-foreground">合计 {fmtBytes(selSize)}</span>
                 </div>
-                <div className="dp-acts">
+                <div className="dp-acts flex gap-1.5 border-b border-border px-3.5 pb-3">
                   <DpAct icon={<IconExtract />} label="解压" onClick={() => actions.onExtract(selEntries)} />
                   <DpAct icon={<IconDelete />} label="删除" danger onClick={() => actions.onDelete(selEntries)} />
                 </div>
-                <div className="dp-info">
+                <div className="dp-info flex flex-col gap-[7px] px-3.5 py-2.5">
                   {selFiles.slice(0, 8).map((e) => (
-                    <div className="dp-row" key={e.path}><span title={e.name} className="ellipsis">{e.name}</span><b>{fmtBytes(e.size)}</b></div>
+                    <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate" key={e.path}><span title={e.name} className="ellipsis">{e.name}</span><b>{fmtBytes(e.size)}</b></div>
                   ))}
-                  {selFiles.length > 8 && <div className="dp-row"><span className="muted">其余 {selFiles.length - 8} 项…</span><b /></div>}
+                  {selFiles.length > 8 && <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span className="muted">其余 {selFiles.length - 8} 项…</span><b /></div>}
                 </div>
               </>
             ) : (
               <>
-                <div className="dp-hero">
-                  <span className="dp-glyph"><FileGlyph name={basename(archive)} isDir={false} size={40} /></span>
-                  <b className="dp-name" title={archive}>{basename(archive)}</b>
-                  <span className="dp-sub">{FORMAT_LABEL[info.type] ?? `${info.type.toUpperCase()} 压缩包`} · {fmtBytes(info.physSize)}</span>
+                <div className="dp-hero flex flex-col items-center gap-1.5 px-4 pb-3.5 pt-[26px] text-center">
+                  <span className="dp-glyph mb-1.5 grid size-16 place-items-center rounded-[14px] border border-border bg-primary/10"><FileGlyph name={basename(archive)} isDir={false} size={40} /></span>
+                  <b className="dp-name break-all text-[13.5px] font-semibold" title={archive}>{basename(archive)}</b>
+                  <span className="dp-sub text-[11.5px] text-muted-foreground">{FORMAT_LABEL[info.type] ?? `${info.type.toUpperCase()} 压缩包`} · {fmtBytes(info.physSize)}</span>
                 </div>
-                <div className="dp-acts">
+                <div className="dp-acts flex gap-1.5 border-b border-border px-3.5 pb-3">
                   <DpAct icon={<IconExtract />} label="解压到" onClick={() => actions.onExtract([])} />
                   <DpAct icon={<IconAdd />} label="添加文件" onClick={actions.onAdd} />
                   <DpAct icon={<IconRename />} label="重命名" onClick={actions.onRenameArchive} />
@@ -634,21 +720,25 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
                     setPanelMenu({ x: Math.max(8, r.right - 190), y: r.bottom + 4 });
                   }} />
                 </div>
-                <div className="dp-sec-title">文件信息</div>
-                <div className="dp-info">
-                  <div className="dp-row"><span>格式</span><b>{info.type.toUpperCase()}</b></div>
-                  <div className="dp-row"><span>项目数</span><b>{info.entries.filter((e) => !e.isDir && !e.path.endsWith('/')).length}</b></div>
-                  <div className="dp-row"><span>原始大小</span><b>{fmtBytes(info.entries.reduce((s, e) => s + (e.isDir ? 0 : e.size), 0))}</b></div>
-                  <div className="dp-row"><span>压缩大小</span><b>{fmtBytes(info.entries.reduce((s, e) => s + (e.isDir ? 0 : (e.packed || e.size)), 0))}</b></div>
-                  <div className="dp-row"><span>加密状态</span><b style={info.hasEncrypted ? { color: 'var(--warn)' } : undefined}>{info.hasEncrypted ? '包含加密内容' : '无'}</b></div>
-                  <div className="dp-row">
+                <div className="dp-sec-title px-3.5 pt-2.5 text-[11px] font-semibold text-muted-foreground">文件信息</div>
+                <div className="dp-info flex flex-col gap-[7px] px-3.5 py-2.5">
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>格式</span><b>{info.type.toUpperCase()}</b></div>
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>项目数</span><b>{info.entries.filter((e) => !e.isDir && !e.path.endsWith('/')).length}</b></div>
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>原始大小</span><b>{fmtBytes(info.entries.reduce((s, e) => s + (e.isDir ? 0 : e.size), 0))}</b></div>
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>压缩大小</span><b>{fmtBytes(info.entries.reduce((s, e) => s + (e.isDir ? 0 : (e.packed || e.size)), 0))}</b></div>
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate"><span>加密状态</span><b style={info.hasEncrypted ? { color: 'var(--warn)' } : undefined}>{info.hasEncrypted ? '包含加密内容' : '无'}</b></div>
+                  <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate">
                     <span>存储位置</span>
                     <b className="ellipsis" title={archive}>{parentDir(archive)}</b>
-                    <button className="dp-copy" title="复制存储位置" onClick={() => void copyPath(parentDir(archive))}><IconCopy /></button>
+                    <button className="dp-copy inline-flex size-[22px] flex-none items-center justify-center rounded-[5px] bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[12.5px]" title="复制存储位置" onClick={() => void copyPath(parentDir(archive))}><IconCopy /></button>
                   </div>
                 </div>
-                <div className={`dp-note ${info.hasEncrypted ? 'warn' : ''}`}>
-                  <IconInfo style={{ width: 14, height: 14, flex: 'none' }} />
+                <div className={cn(
+                  'dp-note mx-3.5 mb-3.5 mt-auto flex items-start gap-2 rounded-lg bg-primary/10 px-[11px] py-[9px] text-[11.5px] leading-[1.55] text-secondary-foreground',
+                  '[&_svg]:mt-px [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:text-primary',
+                  info.hasEncrypted && 'warn bg-[var(--warn-soft)] [&_svg]:text-[color:var(--warn)]',
+                )}>
+                  <IconInfo className="size-[14px] shrink-0" />
                   <span>{info.hasEncrypted
                     ? '这个压缩包包含加密内容，解压时需要输入密码。'
                     : '这是一个文件压缩包，可以解压查看其中的内容。'}</span>
@@ -695,12 +785,20 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   );
 }
 
-/** 面板动作按钮:上图标下文字,与设计稿一致 */
+/** 面板动作按钮:上图标下文字,与设计稿一致;窄面板 flex 等比收缩(旧 .dp-act-btn) */
 function DpAct({ icon, label, danger, onClick }: {
   icon: React.ReactNode; label: string; danger?: boolean; onClick(e: React.MouseEvent): void;
 }) {
   return (
-    <button className={`dp-act-btn ${danger ? 'danger' : ''}`} onClick={onClick}>
+    <button
+      className={cn(
+        'dp-act-btn flex h-[52px] max-w-[58px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md',
+        'border border-border bg-transparent px-1 text-[11px] text-secondary-foreground transition-colors',
+        'hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
+        '[&>span]:max-w-full [&>span]:truncate [&_svg]:size-[15px]',
+        danger && 'danger text-destructive hover:bg-destructive/10 hover:text-destructive',
+      )}
+      onClick={onClick}>
       {icon}<span>{label}</span>
     </button>
   );
@@ -718,7 +816,11 @@ function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMe
 }) {
   return (
     <div
-      className={`row ${selected ? 'sel' : ''}`}
+      className={cn(
+        LIST_GRID,
+        'row group h-8 cursor-default',
+        selected ? 'sel bg-primary/10 hover:bg-primary/10' : 'hover:bg-accent',
+      )}
       data-path={r.path}
       title={r.path}
       draggable={!r.isDir}
@@ -729,18 +831,18 @@ function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMe
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
-      <label className="ck-box" onClick={(e) => { e.stopPropagation(); onCheck(); }}>
-        <input type="checkbox" checked={selected} readOnly />
+      <label className="ck-box flex items-center justify-center" onClick={(e) => { e.stopPropagation(); onCheck(); }}>
+        <input type="checkbox" checked={selected} readOnly className={CK_CLS} />
       </label>
-      <div className="name">
+      <div className="name flex min-w-0 items-center gap-[9px] pl-1">
         <EntryGlyph entry={r} size={18} />
-        <span title={r.path}>{r.name}</span>
+        <span className="truncate" title={r.path}>{r.name}</span>
       </div>
-      <div className="type">{typeLabel(r)}</div>
-      <div className="size" title={r.packed ? `压缩后 ${fmtBytes(r.packed)}` : undefined}>
+      <div className="type truncate px-1.5 text-right text-[12.5px] tabular-nums text-muted-foreground">{typeLabel(r)}</div>
+      <div className="size truncate px-1.5 text-right text-[12.5px] tabular-nums text-secondary-foreground" title={r.packed ? `压缩后 ${fmtBytes(r.packed)}` : undefined}>
         {r.isDir ? '' : fmtBytes(r.size)}
       </div>
-      <div className="time">{r.mtime}</div>
+      <div className="time truncate px-1.5 text-right text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>
     </div>
   );
 }
