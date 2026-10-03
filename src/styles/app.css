@@ -591,93 +591,7 @@ input, select, textarea { font: inherit; color: inherit; }
   background: var(--accent); margin-right: 7px; vertical-align: 1px;
 }
 
-/* ---------------- Home 首页 ---------------- */
-
-.home {
-  flex: 1; min-height: 0; overflow: auto;
-  display: flex; justify-content: center;
-  padding: 36px 32px 56px;
-}
-
-/* 最近打开/最近任务都关闭时,内容整体垂直居中(safe 避免小窗口裁顶) */
-.home.centered { align-items: safe center; }
-
-.home-inner { width: 880px; max-width: 100%; margin: 0 auto; }
-
-.welcome { margin-bottom: 22px; }
-.welcome h1 { font-size: 22px; font-weight: 700; letter-spacing: .01em; }
-.welcome p { margin-top: 5px; font-size: 13px; color: var(--ink-3); }
-
-.qrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.qcard {
-  display: flex; flex-direction: column; gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  background: var(--panel);
-  text-align: left;
-  transition: border-color .15s, background .15s, transform .05s;
-}
-/* 首卡 = 实心主色(参考图主行动卡) */
-.qcard.primary { background: var(--accent); border-color: transparent; }
-.qcard.primary b, .qcard.primary small { color: var(--accent-ink); }
-.qcard.primary small { opacity: .78; }
-.qcard.primary:hover { background: var(--accent-hover); }
-.qcard.primary .qc-ico { background: rgba(255, 255, 255, .18); }
-.qcard.primary .qc-ico svg { color: var(--accent-ink); }
-.qcard:hover { border-color: var(--line-strong); background: var(--bg-chrome); }
-.qcard:active { transform: scale(.995); }
-.qc-ico {
-  width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: var(--r-ctl);
-  background: var(--accent-soft);
-}
-.qc-ico svg { width: 16px; height: 16px; color: var(--accent); }
-.qcard b { font-size: 13.5px; font-weight: 600; }
-.qcard small { color: var(--ink-3); font-size: 11.5px; line-height: 1.45; }
-
-/* 首页双列:最近打开 | 最近任务 */
-.home-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
-.home-cols .home-section { margin-bottom: 0; }
-/* 设置里只保留一个板块时占满整行 */
-.home-cols > .home-section:only-child { grid-column: 1 / -1; }
-.home-section h3 .link-btn {
-  margin-left: auto;
-  float: right;
-  font-size: 11.5px; font-weight: 550; letter-spacing: 0; text-transform: none;
-  color: var(--accent);
-  border-radius: 5px; padding: 2px 7px;
-}
-.home-section h3 .link-btn:hover { background: var(--accent-soft); }
-.link-btn { cursor: pointer; }
-
-.drop-hint {
-  margin: 10px 2px 30px;
-  color: var(--ink-3); font-size: 12px; text-align: center;
-}
-
-.home-section { margin-bottom: 30px; }
-.home-section > h3 {
-  font-size: 12px; font-weight: 600; letter-spacing: .06em;
-  color: var(--ink-3); text-transform: uppercase;
-  margin-bottom: 10px;
-}
-
-.recent-item {
-  display: flex; align-items: center; gap: 11px;
-  height: 44px;
-  padding: 0 12px;
-  border-radius: var(--r-ctl);
-  cursor: pointer;
-}
-.recent-item:hover { background: var(--bg-hover); }
-.recent-item svg.ri-ico { width: 18px; height: 18px; flex: none; color: var(--ink-3); }
-.recent-item .ri-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.recent-item .ri-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.recent-item .ri-path { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.recent-item .ri-meta { font-size: 11.5px; color: var(--ink-3); flex: none; }
-.recent-item.missing { opacity: .5; }
+/* ---------------- 历史任务行(TaskCenter 与首页共用,T9 一并迁) ---------------- */
 
 .hist-item { display: flex; align-items: center; gap: 10px; height: 34px; font-size: 12.5px; color: var(--ink-2); padding: 0 12px; border-radius: var(--r-ctl); }
 .hist-item:hover { background: var(--bg-hover); }
@@ -685,8 +599,6 @@ input, select, textarea { font: inherit; color: inherit; }
 .hist-item .h-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-item .h-time { color: var(--ink-3); font-size: 11.5px; flex: none; }
 .hist-item.err { color: var(--danger); }
-
-.home-empty { color: var(--ink-3); font-size: 12.5px; padding: 6px 12px; }
 
 /* ---------------- 浮层通用(任务中心/右键菜单) ---------------- */
 

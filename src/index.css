@@ -43,6 +43,12 @@
   --mica-bg: rgba(246, 247, 249, .82);
   --mica-line: rgba(0, 0, 0, .08);
   --shadow-mica: 0 8px 24px rgba(20, 26, 32, .14), 0 2px 6px rgba(20, 26, 32, .08), 0 0 0 .5px rgba(0, 0, 0, .04);
+
+  /* 语义补全 + 浮层阴影(shadcn 未覆盖,平移自 app.css;T15 后唯此层存活) */
+  --warn: #b07818;
+  --warn-soft: #faf3e3;
+  --shadow-float: 0 6px 24px rgba(20, 26, 32, .10), 0 1px 4px rgba(20, 26, 32, .06);
+  --shadow-sheet: 0 16px 48px rgba(20, 26, 32, .16), 0 2px 8px rgba(20, 26, 32, .08);
 }
 
 /* shadcn zinc · dark */
@@ -77,6 +83,11 @@
   --mica-bg: rgba(45, 49, 55, .82);
   --mica-line: rgba(255, 255, 255, .08);
   --shadow-mica: 0 8px 26px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .4), 0 0 0 .5px rgba(255, 255, 255, .06);
+
+  --warn: #d0a04f;
+  --warn-soft: #332b1c;
+  --shadow-float: 0 6px 24px rgba(0, 0, 0, .38), 0 1px 4px rgba(0, 0, 0, .3);
+  --shadow-sheet: 0 16px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
 }
 
 /* 映射为 tailwind 工具类: bg-background / border-border / text-primary ... */

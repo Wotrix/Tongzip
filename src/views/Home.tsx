@@ -1,5 +1,5 @@
 /**
- * Home 首页 — 参考图布局:欢迎标题 · 三快捷卡(首卡实心主色)· 最近打开(带体积)· 最近任务(带进度条)
+ * Home 首页 — 欢迎标题 · 三快捷卡(首卡实心主色)· 最近打开(带体积)· 最近任务(带进度条)
  */
 import { useEffect, useState } from 'react';
 import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn } from '../components/icons';
@@ -7,6 +7,7 @@ import FileGlyph from '../components/FileGlyph';
 import { ContextMenu, useTaskHub } from '../components/ui';
 import { RunningCard } from '../components/TaskCenter';
 import { basename, fmtBytes, parentDir } from '../lib/format';
+import { cn } from '@/lib/utils';
 
 export default function Home({ recents, onOpen, onCompress, onCompressFolder, onNewArchive, onExtract, onOpenPick, onSeeAllTasks, onSeeRecent }: {
   recents: string[];
@@ -56,65 +57,85 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
   const recentTasks = jobs.filter((j) => j.status === 'running').slice(0, 3);
   const doneTasks = history.slice(0, Math.max(0, 3 - recentTasks.length));
 
-  /* 两个板块都被关闭时,欢迎区与三快捷卡整体垂直居中 */
+  /* 两个板块都被关闭时,欢迎区与三快捷卡整体垂直居中(safe 避免小窗口裁顶) */
   const bothHidden = !show.recentOpen && !show.recentTasks;
 
+  /* 两板块只剩一个时占满整行(旧 :only-child 规则的等价逻辑) */
+  const single = show.recentOpen !== show.recentTasks;
+
   return (
-    <div className={`home ${bothHidden ? 'centered' : ''}`}>
-      <div className="home-inner">
-        <div className="welcome">
-          <h1>欢迎使用 TongZip</h1>
-          <p>压缩、解压与文件管理,在这一处完成。</p>
+    <div className={cn('min-h-0 flex-1 justify-center overflow-auto bg-background px-8 pt-9 pb-14 flex',
+      bothHidden && '[align-items:safe_center]')}>
+      <div className="mx-auto w-[880px] max-w-full">
+        <div className="mb-[22px]">
+          <h1 className="text-[22px] font-bold tracking-[.01em] text-foreground">欢迎使用 TongZip</h1>
+          <p className="mt-[5px] text-[13px] text-muted-foreground">压缩、解压与文件管理,在这一处完成。</p>
         </div>
 
-        <div className="qrow">
-          <button className="qcard primary" onClick={(e) => {
+        <div className="grid grid-cols-3 gap-3">
+          <button className={cn(
+            'flex flex-col gap-2.5 rounded-lg border border-transparent p-4 text-left',
+            'bg-primary text-primary-foreground transition-[background,transform] duration-150 hover:bg-primary/90 active:scale-[.995]',
+          )} onClick={(e) => {
             const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
             setPickMenu({ x: r.left + 16, y: r.bottom + 4 });
           }}>
-            <span className="qc-ico"><IconArchive /></span>
-            <b>压缩</b>
-            <small>选文件或文件夹即压;若选的全是压缩包则自动转为解压</small>
+            <span className="flex size-[30px] items-center justify-center rounded-md bg-white/[.18] [&_svg]:size-4 [&_svg]:text-primary-foreground"><IconArchive /></span>
+            <b className="text-[13.5px] font-semibold">压缩</b>
+            <small className="text-[11.5px] leading-[1.45] opacity-[.78]">选文件或文件夹即压;若选的全是压缩包则自动转为解压</small>
           </button>
-          <button className="qcard" onClick={onExtract}>
-            <span className="qc-ico"><IconExtract /></span>
-            <b>解压</b>
-            <small>选压缩包即解;非压缩包自动转为压缩</small>
+          <button className={cn(
+            'flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4 text-left',
+            'transition-[border-color,background,transform] duration-150 hover:border-input hover:bg-secondary active:scale-[.995]',
+          )} onClick={onExtract}>
+            <span className="flex size-[30px] items-center justify-center rounded-md bg-primary/10 [&_svg]:size-4 [&_svg]:text-primary"><IconExtract /></span>
+            <b className="text-[13.5px] font-semibold">解压</b>
+            <small className="text-[11.5px] leading-[1.45] text-muted-foreground">选压缩包即解;非压缩包自动转为压缩</small>
           </button>
-          <button className="qcard" onClick={onOpenPick}>
-            <span className="qc-ico"><IconFolderOpen /></span>
-            <b>打开压缩包</b>
-            <small>浏览内容,挑选单个文件再解压</small>
+          <button className={cn(
+            'flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4 text-left',
+            'transition-[border-color,background,transform] duration-150 hover:border-input hover:bg-secondary active:scale-[.995]',
+          )} onClick={onOpenPick}>
+            <span className="flex size-[30px] items-center justify-center rounded-md bg-primary/10 [&_svg]:size-4 [&_svg]:text-primary"><IconFolderOpen /></span>
+            <b className="text-[13.5px] font-semibold">打开压缩包</b>
+            <small className="text-[11.5px] leading-[1.45] text-muted-foreground">浏览内容,挑选单个文件再解压</small>
           </button>
         </div>
-        <p className="drop-hint">把文件或文件夹拖到窗口任意位置 — 压缩包直接打开,文件转为压缩</p>
+        <p className="mx-0.5 mt-2.5 mb-[30px] text-center text-xs text-muted-foreground">把文件或文件夹拖到窗口任意位置 — 压缩包直接打开,文件转为压缩</p>
 
         {(show.recentOpen || show.recentTasks) && (
-        <div className="home-cols">
+        <div className="grid grid-cols-2 gap-[26px]">
           {show.recentOpen && (
-          <div className="home-section">
-            <h3>最近打开 <button className="link-btn" onClick={onSeeRecent}>查看全部</button></h3>
+          <section className={cn('mb-0', single && 'col-span-2')}>
+            <h3 className="mb-2.5 flex items-center text-xs font-semibold tracking-[.06em] text-muted-foreground uppercase">最近打开
+              <button className="ml-auto rounded-[5px] px-[7px] py-0.5 text-[11.5px] font-medium tracking-normal normal-case text-primary transition-colors uppercase-none hover:bg-primary/10" onClick={onSeeRecent}>查看全部</button>
+            </h3>
             {recents.length === 0 ? (
-              <p className="home-empty">还没有记录 — 打开一个压缩包后会出现在这里。</p>
+              <p className="px-3 py-1.5 text-[12.5px] text-muted-foreground">还没有记录 — 打开一个压缩包后会出现在这里。</p>
             ) : recents.slice(0, 5).map((p) => (
-              <div key={p} className={`recent-item ${alive.has(p) ? '' : 'missing'}`}
+              <div key={p} className={cn(
+                'flex h-11 cursor-pointer items-center gap-[11px] rounded-md px-3 transition-colors hover:bg-accent',
+                !alive.has(p) && 'opacity-50',
+              )}
                 title={p} onClick={() => alive.has(p) && onOpen(p)}>
                 <FileGlyph name={basename(p)} isDir={false} size={22} />
-                <span className="ri-main">
-                  <span className="ri-name">{basename(p)}</span>
-                  <span className="ri-path">{parentDir(p)}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">{basename(p)}</span>
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-muted-foreground">{parentDir(p)}</span>
                 </span>
-                <span className="ri-meta">{alive.has(p) ? fmtBytes(sizes.get(p) ?? 0) : '已移除'}</span>
+                <span className="shrink-0 text-[11.5px] text-muted-foreground">{alive.has(p) ? fmtBytes(sizes.get(p) ?? 0) : '已移除'}</span>
               </div>
             ))}
-          </div>
+          </section>
           )}
 
           {show.recentTasks && (
-          <div className="home-section">
-            <h3>最近任务 <button className="link-btn" onClick={onSeeAllTasks}>查看全部</button></h3>
+          <section className={cn('mb-0', single && 'col-span-2')}>
+            <h3 className="mb-2.5 flex items-center text-xs font-semibold tracking-[.06em] text-muted-foreground uppercase">最近任务
+              <button className="ml-auto rounded-[5px] px-[7px] py-0.5 text-[11.5px] font-medium tracking-normal normal-case text-primary transition-colors uppercase-none hover:bg-primary/10" onClick={onSeeAllTasks}>查看全部</button>
+            </h3>
             {recentTasks.length === 0 && doneTasks.length === 0 ? (
-              <p className="home-empty">暂无任务 — 从上方卡片开始第一次压缩。</p>
+              <p className="px-3 py-1.5 text-[12.5px] text-muted-foreground">暂无任务 — 从上方卡片开始第一次压缩。</p>
             ) : (
               <>
                 {recentTasks.map((j) => <RunningCard key={j.taskId} job={j} />)}
@@ -133,7 +154,7 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
                 ))}
               </>
             )}
-          </div>
+          </section>
           )}
         </div>
         )}
