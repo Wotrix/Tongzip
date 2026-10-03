@@ -6,11 +6,13 @@
 import { useState } from 'react';
 import type { JobKind } from '@shared/types';
 import { useTaskHub, type DoneJob, type TrackedJob } from './ui';
+import { Button } from './ui/button';
 import {
   IconClose, IconCompress, IconDelete, IconExtract, IconTest,
   IconCheckCircle, IconWarn, IconClock, IconPause, IconPlay,
 } from './icons';
 import { fmtBytes } from '../lib/format';
+import { cn } from '@/lib/utils';
 
 const KIND_LABEL: Record<JobKind, { run: string; done: string; icon: typeof IconCompress }> = {
   compress: { run: '正在压缩', done: '压缩完成', icon: IconCompress },
@@ -59,6 +61,7 @@ export function RunningCard({ job }: { job: TrackedJob }) {
   const done = job.status === 'done';
   const failed = job.status === 'error' || job.status === 'cancelled';
   const running = job.status === 'running';
+  const indet = job.percent < 0 && running;
   const togglePause = async () => {
     if (busy) return;
     setBusy(true);
@@ -67,42 +70,43 @@ export function RunningCard({ job }: { job: TrackedJob }) {
     setBusy(false);
   };
   return (
-    <div className="tc-item">
-      <div className="tc-title">
+    <div className="rounded-lg px-2.5 pt-2.5 pb-[11px] transition-colors hover:bg-muted">
+      <div className="flex items-center gap-2 text-[12.5px] font-semibold [&_svg]:size-[15px] [&_svg]:shrink-0">
         {done
-          ? <IconCheckCircle style={{ color: 'var(--accent)' }} />
+          ? <IconCheckCircle className="text-primary" />
           : failed
-            ? <IconWarn style={{ color: 'var(--danger)' }} />
-            : <Icon />}
+            ? <IconWarn className="text-destructive" />
+            : <Icon className="text-muted-foreground" />}
         <span>{done ? `${meta.done.replace('完成', '')}完成` : failed ? '任务已中断' : paused ? '已暂停' : meta.run}</span>
-        <span className="act">
+        <span className="ml-auto flex gap-0.5">
           {running && (
-            <button className="icon-btn" style={{ width: 26, height: 26 }} disabled={busy}
+            <Button variant="ghost" size="icon-xs" className="size-[26px] rounded-md text-muted-foreground" disabled={busy}
               title={paused ? '继续任务' : '暂停任务'} onClick={() => void togglePause()}>
-              {paused ? <IconPlay style={{ width: 12, height: 12 }} /> : <IconPause style={{ width: 12, height: 12 }} />}
-            </button>
+              {paused ? <IconPlay className="size-3" /> : <IconPause className="size-3" />}
+            </Button>
           )}
           {running && (
-            <button className="icon-btn" style={{ width: 26, height: 26 }} title="取消任务"
+            <Button variant="ghost" size="icon-xs" className="size-[26px] rounded-md text-muted-foreground" title="取消任务"
               onClick={() => void window.tz.cancelTask(job.taskId)}>
-              <IconClose style={{ width: 12, height: 12 }} />
-            </button>
+              <IconClose className="size-3" />
+            </Button>
           )}
         </span>
       </div>
-      <div className="tc-file" title={job.label || job.file}>{job.label || job.file}</div>
-      {job.message && failed && <div className="tc-file" style={{ color: 'var(--danger)' }}>{job.message}</div>}
-      <div className={`pbar ${job.percent < 0 && job.status === 'running' ? 'indet' : ''}`}>
-        <i style={{
-          width: job.percent >= 0 ? `${job.percent}%` : undefined,
-          background: failed ? 'var(--danger)' : undefined,
-        }} />
+      <div className="mt-[3px] overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-muted-foreground" title={job.label || job.file}>{job.label || job.file}</div>
+      {job.message && failed && <div className="mt-[3px] overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-destructive">{job.message}</div>}
+      <div className="relative mt-2 h-1 overflow-hidden rounded-[2px] bg-border">
+        <i className={cn(
+          'block h-full rounded-[2px] bg-primary transition-[width] duration-[250ms] ease-out',
+          indet && 'w-[34%] animate-[indet_1.2s_ease-in-out_infinite]',
+          failed && 'bg-destructive',
+        )} style={{ width: job.percent >= 0 ? `${job.percent}%` : undefined }} />
       </div>
-      <div className="tc-meta">
+      <div className="mt-[5px] flex gap-3.5 text-[11.5px] text-muted-foreground tabular-nums">
         <span>{job.percent >= 0 ? `${job.percent}%` : running ? '进行中' : ''}</span>
         {speed != null && running && <span>{fmtBytes(speed)}/s</span>}
         {running && !paused && <span>{fmtEta(etaSec)}</span>}
-        {paused && running && <span style={{ color: 'var(--warn)' }}>进度已冻结</span>}
+        {paused && running && <span className="text-[var(--warn)]">进度已冻结</span>}
         {job.totalBytes != null && <span>{fmtBytes(job.totalBytes)}</span>}
       </div>
     </div>
@@ -113,10 +117,14 @@ export function HistoryRow({ h }: { h: DoneJob }) {
   const meta = KIND_LABEL[h.kind];
   const Icon = h.status === 'done' ? IconCheckCircle : IconWarn;
   return (
-    <div className={`hist-item ${h.status === 'done' ? '' : 'err'}`}>
-      <Icon style={{ color: h.status === 'done' ? 'var(--accent)' : 'var(--danger)' }} />
-      <span className="h-name">{h.label ? `${meta.done} · ${h.label}` : meta.done}</span>
-      <span className="h-time">{fmtAgo(h.at)}</span>
+    <div className={cn(
+      'flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
+      'transition-colors hover:bg-accent [&_svg]:size-[15px] [&_svg]:shrink-0',
+      h.status !== 'done' && 'text-destructive',
+    )}>
+      <Icon className={h.status === 'done' ? 'text-primary' : 'text-destructive'} />
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{h.label ? `${meta.done} · ${h.label}` : meta.done}</span>
+      <span className="shrink-0 text-[11.5px] text-muted-foreground">{fmtAgo(h.at)}</span>
     </div>
   );
 }
@@ -125,24 +133,24 @@ export default function TaskCenter({ onClose }: { onClose: () => void }) {
   const { jobs, history, clearHistory } = useTaskHub();
   return (
     <>
-      <div className="pop-scrim" onMouseDown={onClose} />
-      <div className="tc-pop">
-        <div className="tc-head">
-          <IconClock style={{ width: 15, height: 15, color: 'var(--ink-2)' }} />
+      <div className="fixed inset-0 z-70" onMouseDown={onClose} />
+      <div className="absolute top-[46px] right-[130px] z-80 flex max-h-[calc(100vh-70px)] w-[380px] flex-col overflow-hidden rounded-[10px] border border-border bg-popover text-popover-foreground shadow-[var(--shadow-sheet)]">
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3.5 text-[12.5px] font-semibold">
+          <IconClock className="size-[15px] text-muted-foreground" />
           任务中心
-          <span className="muted">{jobs.length ? `${jobs.length} 个进行中` : '无进行中任务'}</span>
+          <span className="ml-auto text-[11.5px] font-normal text-muted-foreground">{jobs.length ? `${jobs.length} 个进行中` : '无进行中任务'}</span>
         </div>
-        <div className="tc-body">
+        <div className="flex flex-col gap-0.5 overflow-auto p-1.5">
           {jobs.length === 0 && history.length === 0 && (
-            <div className="tc-empty">暂无任务<br />拖入文件即可开始</div>
+            <div className="py-[26px] text-center text-[12.5px] text-muted-foreground">暂无任务<br />拖入文件即可开始</div>
           )}
-          {jobs.length > 0 && <div className="tc-group">进行中</div>}
+          {jobs.length > 0 && <div className="px-2 pt-2 pb-1 text-[11px] uppercase tracking-[.05em] text-muted-foreground">进行中</div>}
           {jobs.map((j) => <RunningCard key={j.taskId} job={j} />)}
           {history.length > 0 && (
             <>
-              <div className="tc-group" style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ flex: 1 }}>最近完成</span>
-                <button className="tbtn sm" style={{ height: 22, fontSize: 11 }} onClick={clearHistory}>清空</button>
+              <div className="flex items-center px-2 pt-2 pb-1 text-[11px] uppercase tracking-[.05em] text-muted-foreground">
+                <span className="flex-1">最近完成</span>
+                <Button variant="ghost" size="xs" className="h-[22px] px-1.5 text-[11px] font-normal" onClick={clearHistory}>清空</Button>
               </div>
               {history.map((h) => <HistoryRow key={h.taskId + h.at} h={h} />)}
             </>

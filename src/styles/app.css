@@ -107,7 +107,9 @@
 
 /* ---------------- 基础 ---------------- */
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* 全局盒模型/归零重置由 Tailwind preflight(@layer base)提供。
+   此处绝不能再写无 layer 的 `* { margin:0; padding:0 }` — 无 layer 规则无条件赢过
+   @layer utilities,会令全站 Tailwind 间距类(px-/py-/p-/m-)失效(实测 padding 被归零)。 */
 
 html, body, #root { height: 100%; }
 
@@ -592,88 +594,7 @@ button { cursor: pointer; }
   background: var(--accent); margin-right: 7px; vertical-align: 1px;
 }
 
-/* ---------------- 历史任务行(TaskCenter 与首页共用,T9 一并迁) ---------------- */
-
-.hist-item { display: flex; align-items: center; gap: 10px; height: 34px; font-size: 12.5px; color: var(--ink-2); padding: 0 12px; border-radius: var(--r-ctl); }
-.hist-item:hover { background: var(--bg-hover); }
-.hist-item svg { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
-.hist-item .h-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hist-item .h-time { color: var(--ink-3); font-size: 11.5px; flex: none; }
-.hist-item.err { color: var(--danger); }
-
-/* ---------------- 浮层通用(任务中心/右键菜单) ---------------- */
-
-.pop-scrim { position: fixed; inset: 0; z-index: 70; }
-
-/* ctx 菜单已迁 Tailwind(Mica 令牌保留于 ui.tsx);.pop-scrim 仍由 TaskCenter 使用 */
-
-/* ---------------- 任务中心弹层 ---------------- */
-
-.tc-pop {
-  position: absolute;
-  top: 46px; right: 130px;
-  width: 380px;
-  max-height: calc(100vh - 70px);
-  display: flex; flex-direction: column;
-  background: var(--floating);
-  border: 1px solid var(--line);
-  border-radius: var(--r-panel);
-  box-shadow: var(--shadow-sheet);
-  z-index: 80;
-  overflow: hidden;
-}
-.tc-head {
-  flex: none;
-  display: flex; align-items: center; gap: 8px;
-  height: 40px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--line);
-  font-size: 12.5px; font-weight: 600;
-}
-.tc-head .muted { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--ink-3); }
-.tc-body { overflow: auto; padding: 6px; }
-.tc-group { font-size: 11px; letter-spacing: .05em; color: var(--ink-3); padding: 8px 8px 4px; text-transform: uppercase; }
-
-.tc-item { padding: 10px 10px 11px; border-radius: 8px; }
-.tc-item + .tc-item { margin-top: 2px; }
-.tc-item:hover { background: var(--bg-chrome); }
-.tc-title { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; }
-.tc-title svg { width: 15px; height: 15px; flex: none; color: var(--ink-2); }
-.tc-title .done { color: var(--accent); }
-.tc-title .failed { color: var(--danger); }
-.tc-title .act { margin-left: auto; display: flex; gap: 2px; }
-.tc-file {
-  margin-top: 3px;
-  color: var(--ink-3); font-size: 11.5px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.tc-meta {
-  display: flex; gap: 14px;
-  margin-top: 5px;
-  color: var(--ink-3); font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-}
-.tc-empty { padding: 26px 0; text-align: center; color: var(--ink-3); font-size: 12.5px; }
-
-.pbar {
-  margin-top: 8px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--line);
-  overflow: hidden;
-  position: relative;
-}
-.pbar > i {
-  display: block; height: 100%;
-  border-radius: 2px;
-  background: var(--accent);
-  transition: width .25s ease-out;
-}
-.pbar.indet > i { width: 34% !important; animation: indet 1.2s ease-in-out infinite; }
-@keyframes indet {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(340%); }
-}
+/* 历史任务行 / 任务中心弹层 / 进度条已迁 Tailwind(Home、TaskCenter、TasksPage;indet 动画见 index.css) */
 
 /* ---------------- 对话框 / Sheet ---------------- */
 
@@ -865,7 +786,7 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
   font-size: 13px; font-weight: 600; color: var(--accent);
 }
 
-/* ---------------- 通用页面骨架(最近文件/我的压缩包/任务/设置) ---------------- */
+/* ---------------- 页面骨架(仅设置页尚用,T10 一并迁) ---------------- */
 
 .page {
   flex: 1; min-height: 0; overflow: auto;
@@ -874,73 +795,23 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
 .page-head { margin-bottom: 18px; }
 .page-head h2 { font-size: 19px; font-weight: 700; }
 .page-sub { margin-top: 4px; font-size: 12.5px; color: var(--ink-3); }
-.row-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
-.head-acts { display: flex; gap: 8px; flex: none; }
 
-.pg-empty {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 64px 0;
-  color: var(--ink-2); font-size: 13px;
-  text-align: center;
-}
-.pg-empty small { color: var(--ink-3); font-size: 11.5px; }
+/* 列表页骨架(pg 系列 / tc 系列 / pbar / tasks-body / done)已迁 Tailwind
+   — 使用者:RecentFiles、MyArchives、TasksPage、TaskCenter、Home 历史行 */
 
-/* 页内紧凑加载行 — 不走 pg-empty 的大留白布局 */
-.pg-loading {
-  display: flex; align-items: center; gap: 8px;
-  padding: 14px 12px;
-  font-size: 12.5px; color: var(--ink-3);
-}
+/* ---------------- 设置页导航 ---------------- */
 
-.pg-list { display: flex; flex-direction: column; gap: 2px; }
-.pg-head {
-  display: grid;
-  /* 与 .pg-row 同列宽同间距,滚动时表头与内容列对齐 */
-  grid-template-columns: 30px minmax(0, 1fr) 90px 150px minmax(0, 1.4fr) 34px;
-  gap: 10px;
-  align-items: center;
-  height: 30px;
-  padding: 0 10px;
-  font-size: 11.5px; color: var(--ink-3);
-  border-bottom: 1px solid var(--line);
-  /* 吸附参照是滚动容器 content 边:用负 top 抵消 .page 的 26px 上内边距,
-     否则表头与窗口顶之间留缝,行会从缝里穿出叠到顶栏上 */
-  position: sticky; top: -26px; background: var(--bg); z-index: 1;
-}
-.pg-row {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 90px 150px minmax(0, 1.4fr) 34px;
-  align-items: center;
-  gap: 10px;
-  height: 42px;
-  padding: 0 10px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.pg-row:hover { background: var(--bg-hover); }
-.pg-row.missing { opacity: .5; cursor: default; }
-.pg-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.pg-path { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.pg-size, .pg-time { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.pg-main { display: flex; flex-direction: column; min-width: 0; }
-.pg-main .pg-name { font-weight: 550; }
-
-/* RecentFiles 页行只有 图标/主信息/大小 三段 —— 单独网格 */
-.pg-list:has(.pg-main) .pg-row { grid-template-columns: 30px minmax(0, 1fr) 90px; }
-
-/* ---------------- 任务中心页 ---------------- */
-
-.tasks-layout, .settings-layout {
+.settings-layout {
   display: grid;
   grid-template-columns: 148px minmax(0, 1fr);
   gap: 22px;
   align-items: start;
 }
-.tasks-tabs, .stabs {
+.stabs {
   display: flex; flex-direction: column; gap: 2px;
   position: sticky; top: 0;
 }
-.ttab, .stab {
+.stab {
   display: flex; align-items: center; gap: 7px;
   height: 34px;
   padding: 0 11px;
@@ -949,20 +820,8 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
   color: var(--ink-2);
   text-align: left;
 }
-.ttab:hover, .stab:hover { background: var(--bg-hover); color: var(--ink); }
-.ttab.on, .stab.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.ttab em { font-style: normal; margin-left: auto; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.ttab.on em { color: var(--accent); }
-
-.tasks-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.tasks-body .tc-item { border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--panel); }
-.tasks-body .tc-item + .tc-item { margin-top: 6px; }
-.done-wrap { display: flex; flex-direction: column; gap: 2px; }
-.done-bar {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-bottom: 6px;
-  font-size: 11.5px; color: var(--ink-3);
-}
+.stab:hover { background: var(--bg-hover); color: var(--ink); }
+.stab.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 /* ---------------- 设置页 ---------------- */
 

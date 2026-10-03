@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import FileGlyph from '../components/FileGlyph';
 import { basename, parentDir, fmtBytes } from '../lib/format';
+import { cn } from '@/lib/utils';
 
 export default function RecentFiles({ recents, onOpen }: {
   recents: string[];
@@ -29,28 +30,32 @@ export default function RecentFiles({ recents, onOpen }: {
   }, [recents]);
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <h2>最近文件</h2>
-        <p className="page-sub">最近打开过的压缩包，按时间由新到旧排列。</p>
+    <div className="min-h-0 flex-1 overflow-auto px-8 pt-[26px] pb-12">
+      <div className="mb-[18px]">
+        <h2 className="text-[19px] font-bold">最近文件</h2>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">最近打开过的压缩包，按时间由新到旧排列。</p>
       </div>
       {recents.length === 0 ? (
-        <div className="pg-empty">
+        <div className="flex flex-col items-center gap-2.5 py-16 text-center text-[13px] text-muted-foreground">
           <FileGlyph name="a.7z" isDir={false} size={34} />
           <div>还没有打开过压缩包</div>
-          <small>从首页「打开压缩包」或直接把文件拖进窗口</small>
+          <small className="text-[11.5px]">从首页「打开压缩包」或直接把文件拖进窗口</small>
         </div>
       ) : (
-        <div className="pg-list">
+        <div className="flex flex-col gap-0.5">
           {recents.map((p) => (
-            <div key={p} className={`pg-row ${alive.has(p) ? '' : 'missing'}`} title={p}
+            <div key={p} className={cn(
+              'grid h-[42px] cursor-pointer grid-cols-[30px_minmax(0,1fr)_90px] items-center gap-2.5',
+              'rounded-lg px-2.5 transition-colors hover:bg-accent',
+              !alive.has(p) && 'cursor-default opacity-50',
+            )} title={p}
               onClick={() => alive.has(p) && onOpen(p)}>
               <FileGlyph name={basename(p)} isDir={false} size={22} />
-              <span className="pg-main">
-                <span className="pg-name">{basename(p)}</span>
-                <span className="pg-path">{parentDir(p)}</span>
+              <span className="flex min-w-0 flex-col">
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium">{basename(p)}</span>
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-muted-foreground">{parentDir(p)}</span>
               </span>
-              <span className="pg-size">{alive.has(p) ? fmtBytes(sizes.get(p) ?? 0) : '文件已移除'}</span>
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground tabular-nums">{alive.has(p) ? fmtBytes(sizes.get(p) ?? 0) : '文件已移除'}</span>
             </div>
           ))}
         </div>

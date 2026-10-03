@@ -140,16 +140,20 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
               <>
                 {recentTasks.map((j) => <RunningCard key={j.taskId} job={j} />)}
                 {doneTasks.map((h) => (
-                  <div key={h.taskId + h.at} className={`hist-item ${h.status === 'done' ? '' : 'err'}`}>
+                  <div key={h.taskId + h.at} className={cn(
+                    'flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
+                    'transition-colors hover:bg-accent [&_svg]:size-[15px] [&_svg]:shrink-0',
+                    h.status !== 'done' && 'text-destructive',
+                  )}>
                     {h.status === 'done'
-                      ? <IconCheckCircle style={{ color: 'var(--accent)' }} />
-                      : <IconWarn style={{ color: 'var(--danger)' }} />}
-                    <span className="h-name">
+                      ? <IconCheckCircle className="text-primary" />
+                      : <IconWarn className="text-destructive" />}
+                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                       {h.kind === 'compress' ? '压缩' : h.kind === 'extract' ? '解压' : h.kind === 'test' ? '测试' : '删除'}
                       {h.status === 'done' ? '完成' : h.status === 'error' ? '失败' : '已取消'}
                       {h.label ? ` · ${h.label}` : ''}
                     </span>
-                    <span className="h-time">{new Date(h.at).toLocaleTimeString()}</span>
+                    <span className="shrink-0 text-[11.5px] text-muted-foreground">{new Date(h.at).toLocaleTimeString()}</span>
                   </div>
                 ))}
               </>
