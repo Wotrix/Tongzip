@@ -1,4 +1,4 @@
-// T2 共存漂移检查:浏览视图关键计算样式 + 布局断言
+// T4 图标验证:尺寸受 CSS 控制、无固有 300x150 巨型 svg、颜色继承
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const list = await (await fetch('http://127.0.0.1:9333/json/list')).json();
 const target = list.find((t) => t.type === 'page' && /index\.html/.test(t.url));
@@ -17,39 +17,27 @@ for (let i = 0; i < 24; i++) {
   if (await ev(`return !!document.querySelector('.toolbar .tb-search');`)) break;
   await sleep(500);
 }
-const r = await ev(`
-  const cs = (sel, prop) => { const el = document.querySelector(sel); return el ? getComputedStyle(el)[prop] : null; };
-  const sidebar = document.querySelector('.sidebar');
-  return {
-    view: 'browse',
-    bodyFont: getComputedStyle(document.body).fontFamily.slice(0, 30),
-    btnCursor: cs('.nav-arrow', 'cursor'),
-    btnBg: cs('.nav-arrow', 'backgroundColor'),
-    rowH: cs('.row', 'height'),
-    listHeadCols: cs('.list-head', 'gridTemplateColumns'),
-    detailW: Math.round(document.querySelector('.detail-pane')?.getBoundingClientRect().width ?? -1),
-    sidebarCollapsed: sidebar.className.includes('collapsed'),
-    sidebarW: Math.round(sidebar.getBoundingClientRect().width),
-    scrollW: document.documentElement.scrollWidth, iw: innerWidth,
-    primaryVar: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
-    twUtilityAlive: getComputedStyle(document.querySelector('.app-drag') || document.body) ? true : false,
-    tailwindProbe: (() => { const d = document.createElement('div'); d.className = 'hidden'; document.body.appendChild(d); const h = getComputedStyle(d).display === 'none'; d.remove(); return h; })(),
-  };
-`);
-console.log(JSON.stringify(r, null, 1));
-// 唤回侧边栏再测一次布局
 await ev(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', altKey: true, bubbles: true })); return 1;`);
 await sleep(700);
-const r2 = await ev(`
-  const sb = document.querySelector('.sidebar');
-  return { w: Math.round(sb.getBoundingClientRect().width), sw: document.documentElement.scrollWidth, iw: innerWidth,
-    dw: Math.round(document.querySelector('.detail-pane').getBoundingClientRect().width) };
+const r = await ev(`
+  const svgs = [...document.querySelectorAll('svg')];
+  const bad = svgs.filter(s => s.getBoundingClientRect().width > 40).map(s => (s.parentElement?.className || '?') + ':' + Math.round(s.getBoundingClientRect().width));
+  const w = (sel) => { const s = document.querySelector(sel); return s ? Math.round(s.getBoundingClientRect().width) : null; };
+  return {
+    total: svgs.length, oversized: bad,
+    sidebarIcon: w('.sb-item svg'), toolbarIcon: w('.tbtn svg'), rowGlyph: w('.row .fx'),
+    dpActIcon: w('.dp-act-btn svg'), winBtn: w('.win-btn svg'),
+    strokeColor: (() => { const s = document.querySelector('.sb-item svg'); return s ? getComputedStyle(s).color : null; })(),
+  };
 `);
-console.log('expanded:', JSON.stringify(r2));
-// 回首页看导航(经 sidebar 点首页)
-await ev(`const it=[...document.querySelectorAll('.sb-item')].find(x=>x.textContent.includes('首页')); it && it.dispatchEvent(new MouseEvent('click',{bubbles:true})); return 1;`);
+console.log('browse:', JSON.stringify(r));
+await ev(`const it=[...document.querySelectorAll('.sb-item')].find(x=>x.textContent.includes('首页')); it.dispatchEvent(new MouseEvent('click',{bubbles:true})); return 1;`);
 await sleep(600);
-const r3 = await ev(`return { home: !!document.querySelector('.home-body, .home, [class*=home]'), title: document.querySelector('.hc-title, h1, h2')?.textContent || null };`);
-console.log('home:', JSON.stringify(r3));
+const r2 = await ev(`
+  const svgs = [...document.querySelectorAll('svg')];
+  const bad = svgs.filter(s => s.getBoundingClientRect().width > 40).map(s => (s.parentElement?.className || '?') + ':' + Math.round(s.getBoundingClientRect().width));
+  return { total: svgs.length, oversized: bad, homeCardIcon: (() => { const s = document.querySelector('[class*=card] svg, .hc svg'); return s ? Math.round(s.getBoundingClientRect().width) : null; })() };
+`);
+console.log('home:', JSON.stringify(r2));
 ws.close();
 process.exit(0);
