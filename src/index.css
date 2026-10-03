@@ -136,3 +136,8 @@
   0% { transform: translateX(-100%); }
   100% { transform: translateX(340%); }
 }
+
+/* 主题卡片选中角标入场动画(设置页·外观) */
+@keyframes tc-pop {
+  from { transform: scale(.4); opacity: 0; }
+}

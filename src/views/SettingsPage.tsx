@@ -7,6 +7,11 @@ import type { CSSProperties } from 'react';
 import type { AccentKey, ArchiveFormat, ContextMenuSettings, EngineInfo, Settings } from '@shared/types';
 import { useToast } from '../components/ui';
 import { IconAuto, IconSun, IconMoon, IconWarn } from '../components/icons';
+import { Button } from '../components/ui/button';
+import { Checkbox } from '../components/ui/checkbox';
+import { Switch } from '../components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 const TABS = ['通用', '压缩设置', '外观', '集成', '高级'] as const;
 type Tab = typeof TABS[number];
@@ -47,6 +52,30 @@ const CM_COMPRESS: [keyof ContextMenuSettings, string, string][] = [
   ['compressTarGz', '压缩为 tar.gz', ''],
   ['compressDialog', '压缩选项…', '打开对话框,可选格式/等级/密码'],
 ];
+
+/* —— 设置页版式令牌(与最近文件/任务页同一套尺度) —— */
+const ROW_CLS = 'flex min-w-0 items-center justify-between gap-3';
+const ROW_LABEL_CLS = 'text-[12.5px] text-foreground';
+const ROW_SUB_CLS = 'mt-px text-[11.5px] text-muted-foreground';
+const GROUP_CLS = 'flex flex-col gap-[9px]';
+const GROUP_LABEL_CLS = 'text-xs font-semibold tracking-[.02em] text-muted-foreground';
+const BODY_CLS = 'flex min-w-0 max-w-[560px] flex-col gap-[22px]';
+/** 纵向 Tabs 触发器:覆盖组件默认的「胶囊阴影 + dark 下 input 底色」,保持原柔和高亮 */
+const TAB_CLS = cn(
+  'h-[34px] w-full flex-none justify-start gap-[7px] rounded-lg px-[11px] py-0 text-left',
+  'text-[12.5px] font-normal text-muted-foreground transition-colors',
+  'hover:bg-accent hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground',
+  'data-[state=active]:bg-primary/10 data-[state=active]:font-semibold data-[state=active]:text-primary',
+  'data-[state=active]:shadow-none! dark:data-[state=active]:border-transparent',
+  'dark:data-[state=active]:bg-primary/10 dark:data-[state=active]:text-primary',
+);
+/** 主题预览迷你窗口:中性内容线 + 单点 accent 强调 */
+const PREV_BASE_CLS = 'relative block h-[88px] overflow-hidden rounded-[8px] border border-border';
+const PREV_BG: Record<'light' | 'dark' | 'auto', string> = {
+  light: 'bg-[#f2f4f7]',
+  dark: 'bg-[#202429]',
+  auto: 'bg-[linear-gradient(105deg,#f2f4f7_0_46%,#202429_46%_100%)]',
+};
 
 export default function SettingsPage() {
   const toast = useToast();
@@ -105,183 +134,210 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="page settings-page">
-      <div className="page-head">
-        <h2>设置</h2>
-        <p className="page-sub">所有选项即时保存并生效。</p>
+    <div className="min-h-0 flex-1 overflow-auto px-8 pt-[26px] pb-12">
+      <div className="mb-[18px]">
+        <h2 className="text-[19px] font-bold">设置</h2>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">所有选项即时保存并生效。</p>
       </div>
-      <div className="settings-layout">
-        <aside className="stabs">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} orientation="vertical"
+        className="grid grid-cols-[148px_minmax(0,1fr)] items-start gap-[22px]">
+        <TabsList className="sticky top-0 h-fit w-full items-stretch justify-start gap-0.5 rounded-none bg-transparent p-0">
           {TABS.map((t) => (
-            <button key={t} className={`stab ${tab === t ? 'on' : ''}`} onClick={() => setTab(t)}>{t}</button>
+            <TabsTrigger key={t} value={t} className={TAB_CLS}>{t}</TabsTrigger>
           ))}
-        </aside>
+        </TabsList>
 
-        <div className="settings-body">
-          {tab === '通用' && (
-            <>
-              <div className="set-group">
-                <div className="set-label">双击压缩包时(资源管理器 / 文件关联打开)</div>
-                <div className="seg">
-                  {([['open', '打开发览'], ['quickExtract', '快速解压'], ['extractDialog', '询问去向']] as const).map(([v, label]) => (
-                    <button key={v} type="button" className={s.dblClickAction === v ? 'on' : ''} onClick={() => patch({ dblClickAction: v })}>{label}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="rowline">
-                <div>
-                  <div className="rl-label">记住本次会话密码</div>
-                  <div className="rl-sub">用于同一压缩包的重复读取,关闭应用后清除</div>
-                </div>
-                <button className={`switch ${s.rememberPassword ? 'on' : ''}`} onClick={() => patch({ rememberPassword: !s.rememberPassword })} />
-              </div>
-              <div className="rowline">
-                <div>
-                  <div className="rl-label">首页显示「最近打开」</div>
-                  <div className="rl-sub">在首页底部展示最近打开过的压缩包</div>
-                </div>
-                <button className={`switch ${s.showRecentOpen ? 'on' : ''}`} onClick={() => patch({ showRecentOpen: !s.showRecentOpen })} />
-              </div>
-              <div className="rowline">
-                <div>
-                  <div className="rl-label">首页显示「最近任务」</div>
-                  <div className="rl-sub">在首页底部展示进行中与最近完成的任务</div>
-                </div>
-                <button className={`switch ${s.showRecentTasks ? 'on' : ''}`} onClick={() => patch({ showRecentTasks: !s.showRecentTasks })} />
-              </div>
-            </>
-          )}
-
-          {tab === '压缩设置' && (
-            <>
-              <div className="set-group">
-                <div className="set-label">默认压缩格式</div>
-                <select className="input" value={s.defaultFormat}
-                  onChange={(e) => patch({ defaultFormat: e.target.value as ArchiveFormat })}>
-                  {FORMATS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
-                </select>
-              </div>
-              <div className="set-group">
-                <div className="set-label">默认压缩等级</div>
-                <select className="input" value={s.defaultLevel}
-                  onChange={(e) => patch({ defaultLevel: Number(e.target.value) })}>
-                  {LEVELS.map((l) => <option key={l.v} value={l.v}>{l.label}</option>)}
-                </select>
-                <div className="note">新建压缩包对话框将默认使用这两项;从右键菜单指定格式时以菜单为准。</div>
-              </div>
-            </>
-          )}
-
-          {tab === '外观' && (
-            <>
-              <div className="set-group">
-                <div className="set-label">主题</div>
-                <div className="theme-cards">
-                  {([['light', '浅色', IconSun], ['dark', '深色', IconMoon], ['auto', '跟随系统', IconAuto]] as const).map(([v, label, Ico]) => (
-                    <button key={v} type="button" className={`theme-card ${s.theme === v ? 'on' : ''}`} onClick={() => patch({ theme: v })}>
-                      <span className={`tc-prev prev-${v}`}>
-                        <i className="tc-bar" /><i className="tc-rail" /><i className="tc-line l1" /><i className="tc-line l2" /><i className="tc-line l3" /><i className="tc-btn" />
-                      </span>
-                      <span className="tc-cap"><Ico style={{ width: 13, height: 13 }} /> {label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="set-group">
-                <div className="set-label">强调色</div>
-                <div className="accent-row">
-                  {ACCENTS.map((a) => (
-                    <button key={a.v} type="button" title={a.label}
-                      className={`accent-dot ${s.accent === a.v ? 'on' : ''}`}
-                      style={{ '--dot': a.color } as CSSProperties}
-                      onClick={() => patch({ accent: a.v })} />
-                  ))}
-                </div>
-                <div className="note">按钮、选中行、进度条与导航高亮都会跟随强调色变化。</div>
-              </div>
-            </>
-          )}
-
-          {tab === '集成' && (
-            <>
-              <div className="rowline">
-                <div>
-                  <div className="rl-label">资源管理器右键菜单</div>
-                  <div className="rl-sub">写入当前用户注册表(HKCU),无需管理员权限;下方选项可随时增减菜单项</div>
-                </div>
-                <button className={`switch ${shellOn ? 'on' : ''}`} onClick={() => void toggleShell()} />
-              </div>
-
-              <div className="set-group">
-                <div className="set-label">默认应用</div>
-                <div className="note" style={{ marginBottom: 8 }}>
-                  Windows 限制第三方应用不能静默改默认关联。打开系统设置后选中 TongZip,
-                  把 .7z/.zip 等压缩包指定为它,双击即可直接浏览。
-                  下方「加入打开方式」开关会先把 TongZip 注册进可选列表。
-                </div>
-                <div>
-                  <button className="tbtn sm" onClick={() => void openDefaultApps()}>打开系统「默认应用」设置</button>
-                </div>
-              </div>
-
-              <div className="set-group cm-group" data-off={!shellOn || undefined}>
-                <div className="set-label">文件与文件夹上的菜单</div>
-                {CM_COMPRESS.map(([k, label, sub]) => (
-                  <label className="cm-item" key={k}>
-                    <input type="checkbox" checked={s.contextMenu[k]} disabled={!shellOn}
-                      onChange={(e) => void setCmItem(k, e.target.checked)} />
-                    <span className="cm-text"><b>{label}</b>{sub && <small>{sub}</small>}</span>
-                  </label>
-                ))}
-                <div className="set-label">压缩包上的菜单</div>
-                {CM_EXTRACT.map(([k, label, sub]) => (
-                  <label className="cm-item" key={k}>
-                    <input type="checkbox" checked={s.contextMenu[k]} disabled={!shellOn}
-                      onChange={(e) => void setCmItem(k, e.target.checked)} />
-                    <span className="cm-text"><b>{label}</b>{sub && <small>{sub}</small>}</span>
-                  </label>
-                ))}
-                <div className="cm-foot">
-                  <button className="tbtn sm" disabled={!shellOn} onClick={() => void reRegister()}>按当前选项重新注册</button>
-                  <span className="note">项目移动位置或菜单没变化时,点一下刷新注册。</span>
-                </div>
-              </div>
-            </>
-          )}
-
-          {tab === '高级' && (
-            <div className="set-group">
-              <div className="set-label">压缩引擎</div>
-              <div className="rowline">
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13 }}>
-                    {engine ? `7-Zip 内核 ${engine.version}` : '未检测到'}
-                    {engine && <span style={{ color: 'var(--ink-3)', fontSize: 11.5 }}> · {engine.source === 'bundled' ? '自带' : engine.source === 'system' ? '系统' : '手动'}</span>}
-                  </div>
-                  {engine && <div className="note ellipsis" style={{ maxWidth: 380 }}>{engine.path}</div>}
-                  {engineErr && <div style={{ color: 'var(--danger)', fontSize: 12 }}><IconWarn style={{ width: 12, height: 12, verticalAlign: -2 }} /> {engineErr}</div>}
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="tbtn sm" onClick={async () => {
-                    const r = await window.tz.detectEngine();
-                    if (r.ok) { setEngine(r.data); setEngineErr(null); toast(`引擎就绪:${r.data.version}`); }
-                    else setEngineErr(r.message);
-                  }}>重新检测</button>
-                  <button className="tbtn sm" onClick={async () => {
-                    const r = await window.tz.pickFiles();
-                    if (r.ok && r.data.length) {
-                      patch({ enginePath: r.data[0] });
-                      const d = await window.tz.detectEngine();
-                      if (d.ok) { setEngine(d.data); setEngineErr(null); }
-                    }
-                  }}>手动指定</button>
-                </div>
-              </div>
-              <div className="note">存储位置:%APPDATA% 下的 tongzip-settings.json,不写注册表(右键菜单除外)。</div>
+        <TabsContent value="通用" className={BODY_CLS}>
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>双击压缩包时(资源管理器 / 文件关联打开)</div>
+            <div className="seg">
+              {([['open', '打开发览'], ['quickExtract', '快速解压'], ['extractDialog', '询问去向']] as const).map(([v, label]) => (
+                <button key={v} type="button" className={s.dblClickAction === v ? 'on' : ''} onClick={() => patch({ dblClickAction: v })}>{label}</button>
+              ))}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+          <div className={ROW_CLS}>
+            <div className="min-w-0">
+              <div className={ROW_LABEL_CLS}>记住本次会话密码</div>
+              <div className={ROW_SUB_CLS}>用于同一压缩包的重复读取,关闭应用后清除</div>
+            </div>
+            <Switch checked={s.rememberPassword} onCheckedChange={() => patch({ rememberPassword: !s.rememberPassword })} />
+          </div>
+          <div className={ROW_CLS}>
+            <div className="min-w-0">
+              <div className={ROW_LABEL_CLS}>首页显示「最近打开」</div>
+              <div className={ROW_SUB_CLS}>在首页底部展示最近打开过的压缩包</div>
+            </div>
+            <Switch checked={s.showRecentOpen} onCheckedChange={() => patch({ showRecentOpen: !s.showRecentOpen })} />
+          </div>
+          <div className={ROW_CLS}>
+            <div className="min-w-0">
+              <div className={ROW_LABEL_CLS}>首页显示「最近任务」</div>
+              <div className={ROW_SUB_CLS}>在首页底部展示进行中与最近完成的任务</div>
+            </div>
+            <Switch checked={s.showRecentTasks} onCheckedChange={() => patch({ showRecentTasks: !s.showRecentTasks })} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="压缩设置" className={BODY_CLS}>
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>默认压缩格式</div>
+            <select className="input" value={s.defaultFormat}
+              onChange={(e) => patch({ defaultFormat: e.target.value as ArchiveFormat })}>
+              {FORMATS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
+            </select>
+          </div>
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>默认压缩等级</div>
+            <select className="input" value={s.defaultLevel}
+              onChange={(e) => patch({ defaultLevel: Number(e.target.value) })}>
+              {LEVELS.map((l) => <option key={l.v} value={l.v}>{l.label}</option>)}
+            </select>
+            <div className="note">新建压缩包对话框将默认使用这两项;从右键菜单指定格式时以菜单为准。</div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="外观" className={BODY_CLS}>
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>主题</div>
+            <div className="grid grid-cols-3 gap-3">
+              {([['light', '浅色', IconSun], ['dark', '深色', IconMoon], ['auto', '跟随系统', IconAuto]] as const).map(([v, label, Ico]) => {
+                const on = s.theme === v;
+                return (
+                  <button key={v} type="button" onClick={() => patch({ theme: v })}
+                    className={cn(
+                      /* button 的 UA 样式带 align-items:flex-start,必须显式 items-stretch,否则预览宽度塌成边框 */
+                      'relative flex flex-col items-stretch gap-2 rounded-[12px] border border-border bg-card p-[9px] text-left',
+                      'transition-[border-color,background-color,transform] duration-150 ease-out',
+                      'hover:-translate-y-px hover:border-input active:translate-y-0',
+                      on && 'border-primary bg-primary/[.03] ring-2 ring-primary/15',
+                    )}>
+                    <span className={cn(PREV_BASE_CLS, PREV_BG[v])}>
+                      <i className="absolute inset-x-0 top-0 h-[14px] bg-[rgba(127,127,127,.18)] before:absolute before:left-[5px] before:top-1/2 before:size-[3px] before:-translate-y-1/2 before:rounded-full before:bg-[rgba(127,127,127,.55)] before:shadow-[6px_0_0_rgba(127,127,127,.55),12px_0_0_rgba(127,127,127,.55)]" />
+                      <i className="absolute bottom-0 left-0 top-[14px] w-[22%] bg-[rgba(127,127,127,.12)] before:absolute before:left-[4px] before:top-[22px] before:h-[7px] before:w-[calc(100%_-_8px)] before:rounded-[3px] before:bg-[rgba(127,127,127,.3)] before:shadow-[0_11px_0_rgba(127,127,127,.3),0_22px_0_rgba(127,127,127,.3)] after:absolute after:left-[4px] after:top-[8px] after:h-[7px] after:w-[calc(100%_-_8px)] after:rounded-[3px] after:bg-primary after:opacity-90" />
+                      <i className="absolute left-[28%] top-6 h-2 w-[34%] rounded-[3px] bg-[rgba(120,128,140,.8)]" />
+                      <i className="absolute left-[28%] top-10 h-1.5 w-[54%] rounded-[3px] bg-[rgba(133,141,152,.55)]" />
+                      <i className="absolute left-[28%] top-[52px] h-1.5 w-[42%] rounded-[3px] bg-[rgba(133,141,152,.55)]" />
+                      <i className="absolute bottom-[12px] right-[10%] h-[11px] w-[22%] rounded bg-primary" />
+                    </span>
+                    <span className={cn('flex items-center gap-1.5 px-px text-xs text-muted-foreground', on && 'font-semibold text-primary')}>
+                      <Ico className="size-[13px]" /> {label}
+                    </span>
+                    {on && (
+                      <span className="absolute right-[14px] top-[14px] grid size-[18px] animate-[tc-pop_.18s_ease-out] place-items-center rounded-full bg-primary text-[11px] font-bold leading-none text-primary-foreground shadow-[0_0_0_2.5px_var(--card)]">✓</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>强调色</div>
+            <div className="flex gap-[11px]">
+              {ACCENTS.map((a) => {
+                const on = s.accent === a.v;
+                return (
+                  <button key={a.v} type="button" title={a.label} onClick={() => patch({ accent: a.v })}
+                    className={cn(
+                      'relative size-7 shrink-0 rounded-full bg-[color:var(--dot)] transition-[transform,box-shadow] duration-100 ease-out',
+                      'shadow-[inset_0_0_0_2px_var(--background)] hover:scale-110',
+                      on && 'shadow-[inset_0_0_0_2px_var(--background),0_0_0_2px_var(--card),0_0_0_4px_var(--dot)]',
+                    )}
+                    style={{ '--dot': a.color } as CSSProperties}>
+                    {on && <span className="absolute inset-0 grid place-items-center text-[12.5px] font-bold leading-none text-white [text-shadow:0_1px_2px_rgba(0,0,0,.25)]">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="note">按钮、选中行、进度条与导航高亮都会跟随强调色变化。</div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="集成" className={BODY_CLS}>
+          <div className={ROW_CLS}>
+            <div className="min-w-0">
+              <div className={ROW_LABEL_CLS}>资源管理器右键菜单</div>
+              <div className={ROW_SUB_CLS}>写入当前用户注册表(HKCU),无需管理员权限;下方选项可随时增减菜单项</div>
+            </div>
+            <Switch checked={shellOn} onCheckedChange={() => void toggleShell()} />
+          </div>
+
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>默认应用</div>
+            <div className="note mb-2">
+              Windows 限制第三方应用不能静默改默认关联。打开系统设置后选中 TongZip,
+              把 .7z/.zip 等压缩包指定为它,双击即可直接浏览。
+              下方「加入打开方式」开关会先把 TongZip 注册进可选列表。
+            </div>
+            <div>
+              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={() => void openDefaultApps()}>打开系统「默认应用」设置</Button>
+            </div>
+          </div>
+
+          <div className={cn('flex flex-col gap-[9px] pb-[14px]', !shellOn && 'opacity-50')}>
+            <div className={GROUP_LABEL_CLS}>文件与文件夹上的菜单</div>
+            {CM_COMPRESS.map(([k, label, sub]) => (
+              <div key={k} className={cn('flex items-start gap-[9px] px-[2px] py-[6px] text-[13px]', shellOn ? 'cursor-pointer' : 'cursor-default')}>
+                <Checkbox id={`cm-${k}`} checked={s.contextMenu[k]} disabled={!shellOn}
+                  onCheckedChange={(v) => void setCmItem(k, v === true)}
+                  className="mt-[2px] size-[15px]" />
+                <label htmlFor={`cm-${k}`} className="flex min-w-0 flex-col gap-px">
+                  <b className="font-medium text-foreground">{label}</b>
+                  {sub && <small className="text-[11.5px] text-muted-foreground">{sub}</small>}
+                </label>
+              </div>
+            ))}
+            <div className={GROUP_LABEL_CLS}>压缩包上的菜单</div>
+            {CM_EXTRACT.map(([k, label, sub]) => (
+              <div key={k} className={cn('flex items-start gap-[9px] px-[2px] py-[6px] text-[13px]', shellOn ? 'cursor-pointer' : 'cursor-default')}>
+                <Checkbox id={`cm-${k}`} checked={s.contextMenu[k]} disabled={!shellOn}
+                  onCheckedChange={(v) => void setCmItem(k, v === true)}
+                  className="mt-[2px] size-[15px]" />
+                <label htmlFor={`cm-${k}`} className="flex min-w-0 flex-col gap-px">
+                  <b className="font-medium text-foreground">{label}</b>
+                  {sub && <small className="text-[11.5px] text-muted-foreground">{sub}</small>}
+                </label>
+              </div>
+            ))}
+            <div className="mt-2.5 flex items-center gap-2.5">
+              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" disabled={!shellOn} onClick={() => void reRegister()}>按当前选项重新注册</Button>
+              <span className="note">项目移动位置或菜单没变化时,点一下刷新注册。</span>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="高级" className={BODY_CLS}>
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>压缩引擎</div>
+            <div className={ROW_CLS}>
+              <div className="min-w-0">
+                <div className="text-[13px]">
+                  {engine ? `7-Zip 内核 ${engine.version}` : '未检测到'}
+                  {engine && <span className="text-[11.5px] text-muted-foreground"> · {engine.source === 'bundled' ? '自带' : engine.source === 'system' ? '系统' : '手动'}</span>}
+                </div>
+                {engine && <div className="note ellipsis max-w-[380px]">{engine.path}</div>}
+                {engineErr && <div className="text-xs text-destructive"><IconWarn className="size-3 align-[-2px]" /> {engineErr}</div>}
+              </div>
+              <div className="flex gap-1.5">
+                <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={async () => {
+                  const r = await window.tz.detectEngine();
+                  if (r.ok) { setEngine(r.data); setEngineErr(null); toast(`引擎就绪:${r.data.version}`); }
+                  else setEngineErr(r.message);
+                }}>重新检测</Button>
+                <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={async () => {
+                  const r = await window.tz.pickFiles();
+                  if (r.ok && r.data.length) {
+                    patch({ enginePath: r.data[0] });
+                    const d = await window.tz.detectEngine();
+                    if (d.ok) { setEngine(d.data); setEngineErr(null); }
+                  }
+                }}>手动指定</Button>
+              </div>
+            </div>
+            <div className="note">存储位置:%APPDATA% 下的 tongzip-settings.json,不写注册表(右键菜单除外)。</div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
