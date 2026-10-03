@@ -199,55 +199,7 @@ button { cursor: pointer; }
 
 /* ---------------- 文件列表 ---------------- */
 
-/* ---------------- 目录树面板 ---------------- */
-.br-tree {
-  flex: none;
-  width: 200px;
-  overflow: auto;
-  padding: 6px 6px 14px;
-  border-right: 1px solid var(--line);
-  background: var(--bg-chrome);
-  outline: none;
-}
-/* 收起态:36px 图标窄条 */
-.br-tree.rail {
-  width: 36px;
-  display: flex; justify-content: center; align-items: flex-start;
-  padding: 6px 0;
-}
-.bt-rail-btn {
-  width: 24px; height: 24px; padding: 0;
-  border: 0; border-radius: 6px; background: transparent; color: var(--ink-3);
-  display: grid; place-items: center; cursor: pointer;
-}
-.bt-rail-btn:hover { background: var(--bg-hover); color: var(--ink); }
-.bt-rail-btn svg { width: 15px; height: 15px; }
-
-.bt-row {
-  display: flex; align-items: center; gap: 5px;
-  height: 26px; padding-right: 8px;
-  border-radius: 6px;
-  font-size: 12.5px; color: var(--ink-2);
-  cursor: pointer; white-space: nowrap;
-  user-select: none;
-  outline: none;
-}
-.bt-row:hover { background: var(--bg-hover); color: var(--ink); }
-.bt-row.on { background: var(--bg-select); color: var(--accent); font-weight: 600; }
-/* 键盘导航焦点:内描边,不与选中态冲突(行用程序化 focus, :focus-visible 不触发) */
-.bt-row:focus { box-shadow: inset 0 0 0 1.5px var(--ring); }
-.bt-chev {
-  flex: none; width: 16px; height: 16px;
-  display: grid; place-items: center;
-  color: var(--ink-3); border-radius: 4px;
-}
-.bt-chev:hover { color: var(--ink); }
-.bt-chev svg { width: 11px; height: 11px; transition: transform .13s ease; }
-.bt-chev.open svg { transform: rotate(90deg); }
-.bt-chev.leaf { cursor: default; }
-.bt-ico { flex: none; width: 14px; height: 14px; color: var(--ink-3); }
-.bt-row.on .bt-ico { color: var(--accent); }
-.bt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 目录树面板(.br-tree/.bt-*)已迁 Tailwind(Browser.tsx);bt-row/on 仅作选择器钩子保留 */
 
 /* ---------------- 详情面板 ---------------- */
 .detail-pane {

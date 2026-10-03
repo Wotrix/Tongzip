@@ -489,28 +489,36 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       {/* 目录树 + 文件列表 + 详情面板 */}
       <div className="flex min-h-0 flex-1">
         {treeMode === 'rail' ? (
-          <aside className="br-tree rail" title="展开目录树">
-            <button className="bt-rail-btn" onClick={() => setTreeMode('full')}><IconTree /></button>
+          <aside className="br-tree flex w-9 flex-none items-start justify-center overflow-auto border-r border-border bg-secondary py-1.5" title="展开目录树">
+            <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[15px]" onClick={() => setTreeMode('full')}><IconTree /></button>
           </aside>
         ) : (
-          <aside className="br-tree" ref={treeRef} tabIndex={0} aria-label="压缩包目录树" onKeyDown={onTreeKey}>
+          /* bt-row / on = 键盘导航与自动滚动的 querySelector 钩子(见本文件上方),不承载样式 */
+          <aside className="br-tree w-[200px] flex-none overflow-auto border-r border-border bg-secondary p-1.5 pb-3.5 outline-none" ref={treeRef} tabIndex={0} aria-label="压缩包目录树" onKeyDown={onTreeKey}>
             {visibleRows.map(({ node, depth }) => {
               const open = depth === 0 || expanded.has(node.path);
               return (
                 <div key={node.path}
-                  className={`bt-row ${prefix === node.path ? 'on' : ''}`}
+                  className={cn(
+                    'bt-row flex h-7 flex-none cursor-pointer items-center gap-[5px] pr-2',
+                    'rounded-md text-[12.5px] whitespace-nowrap text-muted-foreground transition-colors select-none outline-none',
+                    'hover:bg-accent hover:text-foreground focus:shadow-[inset_0_0_0_1.5px_var(--ring)]',
+                    prefix === node.path && 'on bg-primary/10 font-semibold text-primary',
+                  )}
                   data-path={node.path}
                   tabIndex={-1}
                   style={{ paddingLeft: 6 + depth * 14 }}
                   title={node.path === '' ? archive : node.path}
                   onClick={() => { setFocusPath(node.path); nav.onGoto(node.path); }}
                   onContextMenu={(e) => { e.preventDefault(); setTreeMenu({ x: e.clientX, y: e.clientY, node }); }}>
-                  <span className={`bt-chev ${open ? 'open' : ''} ${node.kids.length ? '' : 'leaf'}`}
+                  <span className={cn('group grid size-4 flex-none place-items-center rounded opacity-80 transition-colors',
+                    node.kids.length ? 'cursor-pointer hover:text-foreground' : 'cursor-default')}
+                    data-open={open || undefined}
                     onClick={(e) => { e.stopPropagation(); if (node.kids.length) toggleExpand(node.path); }}>
-                    {node.kids.length > 0 && <IconChevronRight />}
+                    {node.kids.length > 0 && <IconChevronRight className="size-[11px] transition-transform duration-[130ms] ease-out group-data-[open]:rotate-90" />}
                   </span>
-                  <IconFolder className="bt-ico" />
-                  <span className="bt-name ellipsis">{node.name}</span>
+                  <IconFolder className="size-3.5 shrink-0 opacity-80" />
+                  <span className="min-w-0 truncate">{node.name}</span>
                 </div>
               );
             })}
