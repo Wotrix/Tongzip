@@ -122,8 +122,17 @@
   /* 迁移期防 preflight 漂移:html 字体沿旧栈 */
   html { font-family: var(--font-sans); }
   body { -webkit-font-smoothing: antialiased; }
+  /* Tailwind v4 preflight 不重置按钮背景(保留 appearance:button 系统灰底);
+     写在 base 层既能去掉 UA 底,又不会像无 layer 规则那样压过 bg-* 工具类 */
+  button { background-color: transparent; }
 }
 
 /* 无边框窗口拖拽区(Radix Portal 浮层所在容器务必 no-drag) */
 .app-drag { -webkit-app-region: drag; }
 .app-nodrag { -webkit-app-region: no-drag; }
+
+/* 进度条不确定态动画(T15 删 app.css 后唯此层存活,供 animate-[indet…] 用) */
+@keyframes indet {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
+}

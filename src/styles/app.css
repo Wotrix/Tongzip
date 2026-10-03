@@ -122,9 +122,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* color 不写死 inherit:无 layer 规则会压过 Tailwind @layer 工具类,交给自然继承;font/background/border/cursor 为实测零漂移的基座规则 */
-button { font: inherit; background: none; border: 0; cursor: pointer; }
-input, select, textarea { font: inherit; color: inherit; }
+/* 仅保留 cursor: pointer 语义。background/border/font/color 的 UA 重置交给
+   Tailwind preflight(@layer base),这样 utility(bg-primary/border-border/text-* 等)
+   能正常覆盖;写在此处(无 layer)会永久压过 @layer utilities,破坏按钮迁移。 */
+button { cursor: pointer; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
