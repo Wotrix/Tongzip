@@ -72,8 +72,8 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
         onPointerDown={startDrag}
         onDoubleClick={() => { if (!hidden) onResize?.(176); }}
         className={cn(
-          'absolute inset-y-0 right-0 z-20 w-[5px] cursor-col-resize touch-none',
-          'after:absolute after:inset-y-2 after:right-[1px] after:w-[2px] after:rounded-full after:bg-transparent',
+          'absolute inset-y-0 right-0 z-20 w-[9px] cursor-col-resize touch-none',
+          'after:absolute after:inset-y-2 after:right-0 after:w-[2px] after:rounded-full after:bg-transparent',
           'after:transition-colors hover:after:bg-primary/40 active:after:bg-primary/60',
         )}
       />

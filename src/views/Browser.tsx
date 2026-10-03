@@ -419,18 +419,18 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     }
   };
 
-  const sortHead = (k: SortKey, label: string, right = false) => (
-    <div className={cn('relative flex h-full min-w-0 items-center', right && 'justify-end')}>
+  /* 表头一律左对齐:旧版数值即左对齐,且右对齐时排序箭头会把表头文字左推,与值错位 */
+  const sortHead = (k: SortKey, label: string) => (
+    <div className="relative flex h-full min-w-0 items-center">
       <button
         onClick={() => { if (sortKey === k) setAsc(!asc); else { setSortKey(k); setAsc(k === 'name'); } }}
         className={cn(
           'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground',
-          right && 'justify-end',
           sortKey === k && 'font-semibold text-primary',
         )}>
         {label}{sortKey === k ? (asc ? ' ↑' : ' ↓') : ''}
       </button>
-      {/* 可拖列手柄:骑在本列右缘(=下一列左界)上;双击回默认 */}
+      {/* 可拖列手柄:骑在本列右缘(=下一列左界)上,11px 宽命中区+常驻分隔线保证可见可瞄;双击回默认 */}
       {k !== 'name' && (
         <span
           aria-hidden
@@ -438,9 +438,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
           onPointerDown={(e) => startColDrag(k, e)}
           onDoubleClick={() => commitCols({ ...cols, [k]: COL_DEFAULTS[k] })}
           className={cn(
-            'absolute -right-[3px] top-0 z-10 h-full w-[6px] cursor-col-resize touch-none',
-            'after:absolute after:inset-y-1 after:right-[2px] after:w-[2px] after:rounded-full after:bg-transparent after:transition-colors hover:after:bg-primary/40',
-            colDrag === k && 'after:bg-primary/60',
+            'absolute -right-[6px] top-0 z-10 h-full w-[11px] cursor-col-resize touch-none',
+            'after:absolute after:inset-y-1 after:left-[5px] after:w-px after:bg-border after:transition-all hover:after:left-[4px] hover:after:w-[3px] hover:after:bg-primary/50',
+            colDrag === k && 'after:left-[4px] after:w-[3px] after:bg-primary/70',
           )}
         />
       )}
@@ -618,8 +618,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               </label>
               {sortHead('name', '名称')}
               {sortHead('type', '类型')}
-              {sortHead('size', '大小', true)}
-              {sortHead('time', '修改时间', true)}
+              {sortHead('size', '大小')}
+              {sortHead('time', '修改时间')}
             </div>
             {rows.length === 0 && (
               <div className="empty-note py-16 text-center text-[13px] text-muted-foreground">{searching ? `没有匹配 “${query.trim()}” 的文件` : '空文件夹'}</div>
@@ -838,11 +838,11 @@ function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMe
         <EntryGlyph entry={r} size={18} />
         <span className="truncate" title={r.path}>{r.name}</span>
       </div>
-      <div className="type truncate px-1.5 text-right text-[12.5px] tabular-nums text-muted-foreground">{typeLabel(r)}</div>
-      <div className="size truncate px-1.5 text-right text-[12.5px] tabular-nums text-secondary-foreground" title={r.packed ? `压缩后 ${fmtBytes(r.packed)}` : undefined}>
+      <div className="type truncate px-1.5 text-[12.5px] tabular-nums text-muted-foreground">{typeLabel(r)}</div>
+      <div className="size truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground" title={r.packed ? `压缩后 ${fmtBytes(r.packed)}` : undefined}>
         {r.isDir ? '' : fmtBytes(r.size)}
       </div>
-      <div className="time truncate px-1.5 text-right text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>
+      <div className="time truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>
     </div>
   );
 }
