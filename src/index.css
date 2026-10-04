@@ -21,9 +21,9 @@
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.967 0.001 286.375);
   --muted-foreground: oklch(0.552 0.016 285.938);
-  /* shadcn 的 accent 是浅灰 hover 面;命名加 -ui 后缀避开 app.css 后载的品牌蓝 --accent,
-     否则 hover:bg-accent 会整块变品牌蓝(选中/悬停色过重的根因) */
-  --accent-ui: oklch(0.967 0.001 286.375);
+  /* shadcn 的 accent 是悬停面;命名加 -ui 后缀避开 app.css 后载的品牌蓝 --accent。
+     底色带 8% 品牌色——纯灰显素,满蓝显重,淡染刚好(六色预设自动跟随) */
+  --accent-ui: color-mix(in srgb, var(--primary) 8%, #fff);
   --accent-ui-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
@@ -65,7 +65,7 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.274 0.006 286.033);
   --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent-ui: oklch(0.274 0.006 286.033);
+  --accent-ui: color-mix(in srgb, var(--primary) 16%, #1a1c1f);
   --accent-ui-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.23);
   --destructive-foreground: oklch(0.141 0.005 285.825);

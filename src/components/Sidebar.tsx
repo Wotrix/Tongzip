@@ -1,7 +1,7 @@
 /**
  * 左侧导航栏 — shadcn 风:品牌块 · 主导航(active 染 primary 圆角 pill)· 底部标语
  * 折叠态:宽/内边距/右边框一并过渡归零(注意 border 宽度计入 computed width,必须显式归零)
- * 宽度可拖(156–260,双击手柄回默认 176):拖动中用本地 dragW 避免每帧写设置,松手才 onResize 持久化
+ * 宽度可拖(156–260,双击手柄回默认 156):拖动中用本地 dragW 避免每帧写设置,松手才 onResize 持久化
  */
 import { useState } from 'react';
 import { Logo, IconHome, IconClock, IconArchive, IconTasks, IconSettings, IconFolderOpen } from './icons';
@@ -17,7 +17,7 @@ const NAV: { v: View; label: string; icon: typeof IconHome }[] = [
   { v: 'settings', label: '设置', icon: IconSettings },
 ];
 
-export default function Sidebar({ view, onNav, runningCount, activeArchive, hidden = false, width = 176, onResize }: {
+export default function Sidebar({ view, onNav, runningCount, activeArchive, hidden = false, width = 156, onResize }: {
   view: View;
   onNav: (v: View) => void;
   runningCount: number;
@@ -30,7 +30,7 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
   /** 拖动结束/双击复位时提交新宽度(已由本组件 clamp 到 156–260) */
   onResize?: (w: number) => void;
 }) {
-  const clampW = (w: number) => Math.min(260, Math.max(156, Math.round(w) || 176));
+  const clampW = (w: number) => Math.min(260, Math.max(156, Math.round(w) || 156));
   /* 拖动中的临时宽度:null=未拖,用 props.width 单一真相 */
   const [dragW, setDragW] = useState<number | null>(null);
   const startDrag = (e: React.PointerEvent) => {
@@ -70,7 +70,7 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
         aria-hidden
         title="拖拽调整宽度 · 双击恢复默认"
         onPointerDown={startDrag}
-        onDoubleClick={() => { if (!hidden) onResize?.(176); }}
+        onDoubleClick={() => { if (!hidden) onResize?.(156); }}
         className={cn(
           'absolute inset-y-0 right-0 z-20 w-[9px] cursor-col-resize touch-none',
           'after:absolute after:inset-y-2 after:right-0 after:w-[2px] after:rounded-full after:bg-transparent',

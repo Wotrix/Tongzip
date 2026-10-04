@@ -45,9 +45,9 @@ const DEFAULTS: Settings = {
   defaultLevel: 5,
   showRecentOpen: true,
   showRecentTasks: true,
-  sidebarWidth: 176,
-  treeWidth: 200,
-  listColumnWidths: { type: 110, size: 110, time: 160 },
+  sidebarWidth: 156,
+  treeWidth: 160,
+  listColumnWidths: {},
 };
 const settingsFile = () => path.join(app.getPath('userData'), 'tongzip-settings.json');
 const store = {

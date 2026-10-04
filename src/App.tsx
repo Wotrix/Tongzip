@@ -77,13 +77,13 @@ function Shell() {
   const [glow, setGlow] = useState(false);
   const dragDepth = useRef(0);
   const pwCache = useRef(new Map<string, string>());
-  /* 侧边栏:仅冷启动双击压缩包打开软件时自动隐藏(移交/应用内打开不动);手动开关过一次则尊重其选择;宽度可拖 156–260 并持久化 */
+  /* 侧边栏:仅冷启动双击压缩包打开软件时自动隐藏(移交/应用内打开不动);手动开关过一次则尊重其选择;宽度可拖 156–260,默认取下限 156 并持久化 */
   const [sbHidden, setSbHidden] = useState(false);
-  const [sbW, setSbW] = useState(176);
+  const [sbW, setSbW] = useState(156);
   const sbTouched = useRef(false);
   const toggleSidebar = useCallback(() => { sbTouched.current = true; setSbHidden((v) => !v); }, []);
   const resizeSidebar = useCallback((w: number) => {
-    const nu = Math.min(260, Math.max(156, Math.round(w) || 176));
+    const nu = Math.min(260, Math.max(156, Math.round(w) || 156));
     setSbW(nu);
     void window.tz.setSettings({ sidebarWidth: nu });
   }, []);

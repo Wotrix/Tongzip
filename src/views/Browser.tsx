@@ -42,7 +42,8 @@ const TB_CLS = cn(
 const TB_OUTLINE_CLS = cn(TB_CLS, 'border-border bg-background dark:bg-background dark:hover:bg-accent');
 
 /* ---------- T13 版式令牌:文件列表(列宽 CSS 变量单一真相,表头与行共用同一网格模板) ---------- */
-const COL_DEFAULTS = { type: 110, size: 110, time: 160 } as const;
+/** 测量不可用/NaN 时的兜底宽(列默认值 = 内容自适应 autoW,不再是固定值) */
+const COL_DEFAULTS = { type: 72, size: 72, time: 130 } as const;
 type ColKey = keyof typeof COL_DEFAULTS;
 /** 任意可拖列:name 特殊——缺省自适应,拖过才定宽,双击回自适应 */
 type AnyColKey = ColKey | 'name';
@@ -51,6 +52,12 @@ const COL_LIMITS: Record<ColKey, [number, number]> = { type: [72, 320], size: [7
 const NAME_RANGE: [number, number] = [120, 600];
 const clampCol = (k: ColKey, w: number) => Math.min(COL_LIMITS[k][1], Math.max(COL_LIMITS[k][0], Math.round(w) || COL_DEFAULTS[k]));
 const clampName = (w: number) => Math.min(NAME_RANGE[1], Math.max(NAME_RANGE[0], Math.round(w) || 200));
+/* canvas 文本测量:默认列宽按当前目录最长内容收紧(尽量小且完整) */
+const _mctx = document.createElement('canvas').getContext('2d');
+const measure = (txt: string, font: string) => { if (!_mctx) return txt.length * 7; _mctx.font = font; return _mctx.measureText(txt).width; };
+const CELL_FONT = '12.5px "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif';
+/** 表头按 semibold 量:激活列加粗/箭头都不致裁切 */
+const HEAD_FONT = '600 12px "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif';
 /** 表头/行共用:名称列未定宽时弹性保底 120px;窄容不下时 min-w 强制溢出→滚动容器横滚,表头随行对齐 */
 const LIST_GRID = cn(
   'grid grid-cols-[30px_var(--col-name,minmax(120px,1fr))_var(--col-type)_var(--col-size)_var(--col-time)] items-center pl-3 pr-4',
@@ -131,22 +138,22 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   const lastClick = useRef<string | null>(null);
   const dragging = useRef(false);
 
-  /* 可拖列宽:CSS 变量挂在滚动容器上作单一真相;松手才写设置(避免每帧 IO);挂载时回读,非法值回默认 */
-  const [cols, setCols] = useState<Record<ColKey, number> & { name?: number }>({ ...COL_DEFAULTS });
+  /* 可拖列宽:CSS 变量挂在滚动容器上作单一真相;未拖过的列 = 内容自适应宽(autoW),松手才写设置 */
+  const [cols, setCols] = useState<Partial<Record<ColKey, number>> & { name?: number }>({});
   const [colDrag, setColDrag] = useState<AnyColKey | null>(null);
-  /* 目录树面板宽度:可拖 160–400,双击回 200,持久化 treeWidth */
-  const [treeW, setTreeW] = useState(200);
+  /* 目录树面板宽度:可拖 160–400,默认/双击回 160(尽量小),持久化 treeWidth */
+  const [treeW, setTreeW] = useState(160);
   const [treeDrag, setTreeDrag] = useState(false);
   useEffect(() => {
     void (async () => {
       const s = await window.tz.getSettings();
       const c = s.listColumnWidths;
-      if (typeof s.treeWidth === 'number') setTreeW(Math.min(400, Math.max(160, Math.round(s.treeWidth)) || 200));
+      if (typeof s.treeWidth === 'number') setTreeW(Math.min(400, Math.max(160, Math.round(s.treeWidth)) || 160));
       if (!c) return;
       setCols((p) => ({
-        type: clampCol('type', typeof c.type === 'number' ? c.type : p.type),
-        size: clampCol('size', typeof c.size === 'number' ? c.size : p.size),
-        time: clampCol('time', typeof c.time === 'number' ? c.time : p.time),
+        type: typeof c.type === 'number' ? clampCol('type', c.type) : p.type,
+        size: typeof c.size === 'number' ? clampCol('size', c.size) : p.size,
+        time: typeof c.time === 'number' ? clampCol('time', c.time) : p.time,
         name: typeof c.name === 'number' ? clampName(c.name) : undefined,
       }));
     })();
@@ -161,7 +168,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     el.setPointerCapture(e.pointerId);
     const startX = e.clientX;
     /* name 未定宽时以当前实测格宽为基准(自适应宽随窗口变,只在按下瞬间取一次) */
-    const base = k === 'name' ? (cols.name ?? (el.parentElement ? el.parentElement.getBoundingClientRect().width : 200)) : cols[k];
+    const base = k === 'name' ? (cols.name ?? (el.parentElement ? el.parentElement.getBoundingClientRect().width : 200)) : (cols[k] ?? autoW[k]);
     const at = (ev: PointerEvent) => (k === 'name' ? clampName(base + ev.clientX - startX) : clampCol(k, base + ev.clientX - startX));
     const move = (ev: PointerEvent) => setCols((p) => ({ ...p, [k]: at(ev) }));
     const up = (ev: PointerEvent) => {
@@ -184,7 +191,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     el.setPointerCapture(e.pointerId);
     const startX = e.clientX;
     const base = treeW;
-    const clampT = (w: number) => Math.min(400, Math.max(160, Math.round(w) || 200));
+    const clampT = (w: number) => Math.min(400, Math.max(160, Math.round(w) || 160));
     const at = (ev: PointerEvent) => clampT(base + ev.clientX - startX);
     const move = (ev: PointerEvent) => setTreeW(at(ev));
     const up = (ev: PointerEvent) => {
@@ -320,6 +327,24 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     };
     return [...list].sort(cmp);
   }, [info, prefix, sortKey, asc, query, searching]);
+
+  /* 默认列宽 = 当前目录内容自适应收紧:表头/最长值取大者 + 内边距,完整不裁切 */
+  const autoW = useMemo<Record<ColKey, number>>(() => {
+    const pad = 12 /* px-1.5 两侧 */ + 8 /* 列间距余量 */;
+    const fit = (k: ColKey, texts: string[], head: string) => clampCol(k,
+      Math.max(
+        texts.reduce((m, t) => Math.max(m, measure(t, CELL_FONT)), 0),
+        measure(head, HEAD_FONT) + 16 /* 排序箭头占位 */,
+      ) + pad,
+    );
+    return {
+      type: fit('type', rows.map((r) => typeLabel(r)), '类型'),
+      size: fit('size', rows.filter((r) => !r.isDir).map((r) => fmtBytes(r.size)), '大小'),
+      time: fit('time', rows.map((r) => r.mtime), '修改时间'),
+    };
+  }, [rows]);
+  /** 生效列宽:用户拖过用用户值,否则自适应 */
+  const colW = (k: ColKey) => cols[k] ?? autoW[k];
 
   /* Delete / Enter / Ctrl+A / Ctrl+E 等快捷键(与菜单项 kbd 标注一致) */
   const stateRef = useRef({ sel: new Set<string>(), rows: [] as ArchiveEntry[] });
@@ -469,9 +494,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       {/* 可拖列手柄:骑在本列右缘(=下一列左界)上,11px 宽命中区+常驻分隔线保证可见可瞄;双击回默认(名称列回自适应) */}
       <span
         aria-hidden
-        title={k === 'name' ? '拖拽调整列宽 · 双击恢复自适应宽度' : '拖拽调整列宽 · 双击恢复默认'}
+        title="拖拽调整列宽 · 双击恢复自动宽度"
         onPointerDown={(e) => startColDrag(k, e)}
-        onDoubleClick={() => commitCols({ ...cols, [k]: k === 'name' ? undefined : COL_DEFAULTS[k as ColKey] })}
+        onDoubleClick={() => commitCols({ ...cols, [k]: undefined })}
         className={cn(
           'absolute -right-[6px] top-0 z-10 h-full w-[11px] cursor-col-resize touch-none',
           'after:absolute after:inset-y-1 after:left-[5px] after:w-px after:bg-border after:transition-all hover:after:left-[4px] hover:after:w-[3px] hover:after:bg-primary/50',
@@ -638,12 +663,12 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               );
             })}
           </aside>
-          {/* 右缘拖宽手柄:与侧栏/列手柄同款交互;双击回默认 200 */}
+          {/* 右缘拖宽手柄:与侧栏/列手柄同款交互;双击回默认 160(取下限) */}
           <span
             aria-hidden
             title="拖拽调整目录树宽度 · 双击恢复默认"
             onPointerDown={startTreeDrag}
-            onDoubleClick={() => { setTreeW(200); void window.tz.setSettings({ treeWidth: 200 }); }}
+            onDoubleClick={() => { setTreeW(160); void window.tz.setSettings({ treeWidth: 160 }); }}
             className={cn(
               'absolute inset-y-0 right-0 z-20 w-[9px] cursor-col-resize touch-none',
               'after:absolute after:inset-y-2 after:right-0 after:w-[2px] after:rounded-full after:bg-transparent',
@@ -657,7 +682,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               list-head/entry-list/row/ck-box 类名保留作 CDP 探针对选择器钩子,不承载样式 */}
           <div
             className={cn('entry-list min-h-0 flex-1 overflow-auto pb-5', colDrag && 'select-none')}
-            style={{ '--col-type': `${cols.type}px`, '--col-size': `${cols.size}px`, '--col-time': `${cols.time}px`, ...(cols.name ? { '--col-name': `${cols.name}px` } : {}) } as React.CSSProperties}
+            style={{ '--col-type': `${colW('type')}px`, '--col-size': `${colW('size')}px`, '--col-time': `${colW('time')}px`, ...(cols.name ? { '--col-name': `${cols.name}px` } : {}) } as React.CSSProperties}
             onContextMenu={(e) => onContextMenu(e, null)}
           >
             <div className={cn(LIST_GRID, 'list-head sticky top-0 z-[1] h-8 border-b border-border bg-background text-xs text-muted-foreground')}>
