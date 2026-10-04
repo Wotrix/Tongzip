@@ -2,21 +2,33 @@
  * 顶栏 — 只承载拖拽区 + 任务铃铛 + 窗口控制。
  * 返回/前进箭头、面包屑、搜索框已搬入浏览视图自身的导航行(Browser .br-nav),
  * 顶栏在所有视图下形态一致、不再占用内容空间,也不画底部分隔线。
+ * 侧栏隐藏时左空白区按竞品标题栏形态显示「图标 + 压缩包名 - TongZip」(纯展示,不带菜单)。
  */
 import { useState } from 'react';
 import TaskCenter from './TaskCenter';
-import { IconMin, IconMax, IconClose, IconBell } from './icons';
+import { IconMin, IconMax, IconClose, IconBell, Logo } from './icons';
 import { useTaskHub } from './ui';
 import { cn } from '@/lib/utils';
 
-export default function TopBar() {
+export default function TopBar({ archiveLabel = null }: { archiveLabel?: string | null }) {
   const { jobs } = useTaskHub();
   const running = jobs.filter((j) => j.status === 'running').length;
   const [tcOpen, setTcOpen] = useState(false);
 
   return (
     <header className="app-drag relative flex h-[42px] shrink-0 items-center pl-2.5 bg-secondary">
-      <div className="flex-1 min-w-0" />
+      {/* 标题位:侧栏隐藏后品牌锚点消失,这里补上「文件名 - TongZip」(截屏形态,无菜单栏) */}
+      <div className="flex min-w-0 flex-1 items-center">
+        {archiveLabel && (
+          <span className="flex min-w-0 items-center gap-2 pl-1.5 text-[12.5px]">
+            <span className="flex size-[19px] shrink-0 items-center justify-center rounded-[5px] bg-primary text-primary-foreground">
+              <Logo className="size-[12px]" />
+            </span>
+            <span className="truncate font-semibold text-foreground" title={archiveLabel}>{archiveLabel}</span>
+            <span className="shrink-0 text-muted-foreground">- TongZip</span>
+          </span>
+        )}
+      </div>
       <div className="app-nodrag ml-auto flex items-center gap-0.5">
         <button
           title="任务通知"

@@ -406,7 +406,8 @@ function Shell() {
       />
 
       <div className="main-col">
-        <TopBar />
+        {/* 侧栏隐藏的浏览视图:顶栏标题位补显示当前压缩包名(竞品标题栏形态,无菜单栏) */}
+        <TopBar archiveLabel={sbHidden && view === 'browse' && activeTab ? basename(activeTab.archive) : null} />
         {engineWarn && (
           <div className="flex flex-none items-center gap-[9px] border-b border-border bg-[var(--warn-soft)] px-4 py-2 text-[12.5px] text-foreground">
             <IconWarn className="size-[15px] shrink-0 text-[color:var(--warn)]" />
