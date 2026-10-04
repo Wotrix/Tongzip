@@ -37,6 +37,8 @@ declare global {
       winMinimize(): void;
       winMaximize(): void;
       winClose(): void;
+      taskWindowOpen(): Promise<boolean>;
+      taskSnapshot(): Promise<ProgressEvent[]>;
       getLaunchPayload(): Promise<LaunchPayload | null>;
       onLaunch(fn: (p: LaunchPayload) => void): () => void;
       onProgress(fn: (ev: ProgressEvent) => void): () => void;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import TaskWindow from './components/TaskWindow';
 import './index.css';
 import './styles/app.css';
 
@@ -18,9 +19,11 @@ void (async () => {
   window.tz.onThemeChanged((dark) => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   });
+  // 独立任务窗口与主窗共用一套 bundle,靠 ?window=task 分流渲染
+  const taskWin = new URLSearchParams(location.search).get('window') === 'task';
   createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <App />
+      {taskWin ? <TaskWindow /> : <App />}
     </React.StrictMode>,
   );
 })();

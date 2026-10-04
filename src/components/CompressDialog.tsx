@@ -140,6 +140,8 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
     };
     const r = await window.tz.compress(job);
     if (!r.ok) { setBusy(false); toast(r.message, 'err'); return; }
+    // 压缩启动即弹独立任务窗口(已在跑的任务一并展示,终态后自动关)
+    void window.tz.taskWindowOpen();
     // 任务中心展示总体积(大目录递归求和可能稍慢,不阻塞任务启动)
     void window.tz.totalSize(items).then((sz) => {
       api.trackTask(r.data.taskId, 'compress', (j) => {

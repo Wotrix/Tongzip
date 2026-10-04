@@ -26,6 +26,10 @@ const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const isWin = process.platform === 'win32';
 
 let win: BrowserWindow | null = null;
+/** 独立任务窗口:压缩启动时弹出,展示进行中任务进度 */
+let taskWin: BrowserWindow | null = null;
+/** 任务快照:taskId → 最新进度事件(任务窗口晚开时回放进行中任务;终态延迟清除) */
+const taskFeed = new Map<string, ProgressEvent>();
 let pendingPayload: LaunchPayload | null = null;
 
 /** 极简 JSON 设置存储(同步读写,存于 userData 目录) */
@@ -165,7 +169,46 @@ function createWindow(): BrowserWindow {
 }
 
 function send(ev: ProgressEvent): void {
-  win?.webContents.send('tz:progress', ev);
+  /* 快照维护:任务窗口打开瞬间靠它回放已在跑的任务;终态 6s 后清理 */
+  taskFeed.set(ev.taskId, ev);
+  if (ev.status !== 'running') setTimeout(() => taskFeed.delete(ev.taskId), 6000);
+  /* 广播到所有窗口(主窗铃铛/任务中心 + 独立任务窗口) */
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('tz:progress', ev);
+  }
+}
+
+/** 打开/唤回独立任务窗口(frameless 小窗,同 bundle 加 ?window=task 分流渲染) */
+function openTaskWindow(): void {
+  if (taskWin && !taskWin.isDestroyed()) {
+    if (taskWin.isMinimized()) taskWin.restore();
+    taskWin.show();
+    taskWin.focus();
+    return;
+  }
+  taskWin = new BrowserWindow({
+    width: 460,
+    height: 400,
+    minWidth: 380,
+    minHeight: 220,
+    show: false,
+    frame: false,
+    title: 'TongZip 任务',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17191c' : '#ffffff',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+    },
+  });
+  taskWin.once('ready-to-show', () => taskWin?.show());
+  taskWin.on('closed', () => { taskWin = null; });
+  if (DEV_URL) {
+    void taskWin.loadURL(`${DEV_URL}${DEV_URL.includes('?') ? '&' : '?'}window=task`);
+  } else {
+    void taskWin.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { query: { window: 'task' } });
+  }
 }
 
 function deliverPayload(p: LaunchPayload | null): void {
@@ -295,7 +338,9 @@ function installIpc(): void {
     for (const [k, v] of Object.entries(patch)) store.set(k as keyof Settings, v);
     if (patch.theme && patch.theme !== 'auto') nativeTheme.themeSource = patch.theme;
     if (patch.theme === 'auto') nativeTheme.themeSource = 'system';
-    win?.webContents.send('tz:theme-changed', nativeTheme.shouldUseDarkColors);
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('tz:theme-changed', nativeTheme.shouldUseDarkColors);
+    }
     if (patch.enginePath) void detectEngine(patch.enginePath).catch(() => undefined);
     return store.raw;
   });
@@ -320,12 +365,20 @@ function installIpc(): void {
     });
   }));
 
-  ipcMain.handle('tz:win-minimize', () => win?.minimize());
-  ipcMain.handle('tz:win-maximize', () => {
-    if (!win) return;
-    if (win.isMaximized()) win.unmaximize(); else win.maximize();
+  /* 窗控按 sender 定位各自窗口:主窗/任务窗口互不误伤 */
+  ipcMain.handle('tz:win-minimize', (e) => BrowserWindow.fromWebContents(e.sender)?.minimize());
+  ipcMain.handle('tz:win-maximize', (e) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (!w) return;
+    if (w.isMaximized()) w.unmaximize(); else w.maximize();
   });
-  ipcMain.handle('tz:win-close', () => win?.close());
+  ipcMain.handle('tz:win-close', (e) => {
+    /* 按 sender 关各自窗口:任务窗口的关闭钮不应误关主窗 */
+    BrowserWindow.fromWebContents(e.sender)?.close();
+  });
+  /* 任务窗口:打开/唤回 + 进行中任务快照(晚开的窗口回放) */
+  ipcMain.handle('tz:task-window-open', () => { openTaskWindow(); return true; });
+  ipcMain.handle('tz:task-snapshot', () => [...taskFeed.values()]);
   ipcMain.handle('tz:get-launch-payload', () => {
     const p = pendingPayload;
     pendingPayload = null;
@@ -355,7 +408,8 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.themeSource = theme === 'auto' ? 'system' : theme;
     installIpc();
     win = createWindow();
-    win.on('closed', () => { win = null; });
+    // 主窗关闭即退出(否则任务窗口残留会让 app 不退)
+    win.on('closed', () => { win = null; app.quit(); });
     deliverPayload(parseArgv(process.argv));
     // 引擎预热(失败不阻塞 UI,渲染层会引导用户处理)
     void detectEngine(store.get('enginePath') as string | null).catch(() => undefined);

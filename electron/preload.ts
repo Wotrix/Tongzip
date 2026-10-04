@@ -64,6 +64,10 @@ const api = {
   winMaximize: () => ipcRenderer.invoke('tz:win-maximize'),
   winClose: () => ipcRenderer.invoke('tz:win-close'),
 
+  /* 任务窗口:压缩启动时打开/唤回;晚开窗口用快照回放进行中任务 */
+  taskWindowOpen: (): Promise<boolean> => ipcRenderer.invoke('tz:task-window-open'),
+  taskSnapshot: (): Promise<ProgressEvent[]> => ipcRenderer.invoke('tz:task-snapshot'),
+
   /* 启动事件(shell/双击传入的目标) */
   getLaunchPayload: (): Promise<LaunchPayload | null> => ipcRenderer.invoke('tz:get-launch-payload'),
   onLaunch: (fn: (p: LaunchPayload) => void): Unsub => {

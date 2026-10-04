@@ -242,6 +242,10 @@ export async function pauseTask(taskId: string): Promise<boolean> {
   return h.paused;
 }
 
+/** 任务启动即发初始 running 事件:不等 7za 首行输出,任务窗口/快照开窗即有卡 */
+function emitStart(taskId: string, kind: JobKind, onProgress: ProgressFn) {
+  onProgress({ taskId, kind, percent: -1, file: '', status: 'running' });
+}
 function emitDone(taskId: string, kind: JobKind, onProgress: ProgressFn, message: string) {
   onProgress({ taskId, kind, percent: 100, file: '', status: 'done', message });
 }
@@ -511,6 +515,7 @@ export async function runCompress(job: CompressJob, onProgress: ProgressFn): Pro
   const taskId = randomUUID();
   const handle: TaskHandle = { proc: null, cancelled: false };
   tasks.set(taskId, handle);
+  emitStart(taskId, 'compress', onProgress);
   const compound = COMPOUND[job.format];
 
   (async () => {
@@ -568,6 +573,7 @@ export async function runExtract(job: ExtractJob, onProgress: ProgressFn): Promi
   const taskId = randomUUID();
   const handle: TaskHandle = { proc: null, cancelled: false };
   tasks.set(taskId, handle);
+  emitStart(taskId, 'extract', onProgress);
 
   const args = ['x', '-y', '-spd']; // -spd: 条目名字面匹配,防 */?/# 误扩展连带解压其他条目
   if (job.overwrite === 'overwrite') args.push('-aoa');
@@ -709,6 +715,7 @@ export async function runTest(archive: string, password: string | undefined, onP
   const taskId = randomUUID();
   const handle: TaskHandle = { proc: null, cancelled: false };
   tasks.set(taskId, handle);
+  emitStart(taskId, 'test', onProgress);
   const args = ['t', '-y'];
   if (password) args.push(`-p${password}`);
   args.push(archive);
@@ -730,6 +737,7 @@ export async function runDelete(archive: string, entries: string[], onProgress: 
   const taskId = randomUUID();
   const handle: TaskHandle = { proc: null, cancelled: false };
   tasks.set(taskId, handle);
+  emitStart(taskId, 'delete', onProgress);
   (async () => {
     try {
       const r = await runStep(handle, taskId, 'delete', ['d', '-y', '-spd', archive, ...entries], onProgress);
