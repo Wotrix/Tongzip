@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ArchiveFile } from '@shared/types';
 import FileGlyph from '../components/FileGlyph';
-import { IconReveal, IconSpinner } from '../components/icons';
+import { ContextMenu, useToast } from '../components/ui';
+import { IconReveal, IconSpinner, IconFolderOpen, IconCopy } from '../components/icons';
 import { Button } from '../components/ui/button';
 import { fmtBytes, parentDir } from '../lib/format';
 
@@ -16,9 +17,12 @@ export default function MyArchives({ onOpen, onNew }: {
   onOpen(p: string): void;
   onNew(): void;
 }) {
+  const toast = useToast();
   const [files, setFiles] = useState<ArchiveFile[] | null>(scanCache);
   const [scanning, setScanning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** 行的右键菜单锚点(磁盘扫描结果,无"移除"项) */
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   const rescan = useCallback(() => {
     setScanning(true); setErr(null);
@@ -65,13 +69,14 @@ export default function MyArchives({ onOpen, onNew }: {
             <span /><span>名称</span><span>大小</span><span>修改时间</span><span>位置</span><span />
           </div>
           {files.map((f) => (
-            <div key={f.path} className="grid h-[42px] cursor-pointer grid-cols-[30px_minmax(0,1fr)_90px_150px_minmax(0,1.4fr)_34px] items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-accent" title={f.path} onClick={() => onOpen(f.path)}>
+            <div key={f.path} className="grid h-[42px] cursor-pointer grid-cols-[30px_minmax(0,1fr)_90px_150px_minmax(0,1.4fr)_34px] items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-accent" title={f.path} onClick={() => onOpen(f.path)}
+              onContextMenu={(e) => { e.preventDefault(); setRowMenu({ x: e.clientX, y: e.clientY, path: f.path }); }}>
               <FileGlyph name={f.name} isDir={false} size={22} />
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium">{f.name}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground tabular-nums">{fmtBytes(f.size)}</span>
               <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground tabular-nums">{f.mtime}</span>
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-muted-foreground">{parentDir(f.path)}</span>
-              <Button variant="ghost" size="icon-xs" className="size-[26px] rounded-md text-muted-foreground" title="在资源管理器中显示"
+              <Button variant="ghost" size="icon-xs" className="size-[26px] rounded-md text-muted-foreground hover:bg-[var(--bg-active)]" title="在资源管理器中显示"
                 onClick={(e) => { e.stopPropagation(); void window.tz.revealInExplorer(f.path); }}>
                 <IconReveal className="size-[14px]" />
               </Button>
@@ -79,6 +84,18 @@ export default function MyArchives({ onOpen, onNew }: {
           ))}
         </div>
       )}
+
+      {rowMenu && (() => {
+        const p = rowMenu.path;
+        const close = () => setRowMenu(null);
+        return (
+          <ContextMenu x={rowMenu.x} y={rowMenu.y} onClose={close} items={[
+            { label: '打开', icon: <IconFolderOpen />, onClick: () => { close(); onOpen(p); } },
+            { label: '打开文件位置', icon: <IconReveal />, onClick: () => { close(); void window.tz.revealInExplorer(p); } },
+            { label: '复制文件路径', icon: <IconCopy />, onClick: () => { close(); void navigator.clipboard.writeText(p).then(() => toast('已复制到剪贴板')).catch(() => toast('复制失败', 'err')); } },
+          ]} />
+        );
+      })()}
     </div>
   );
 }

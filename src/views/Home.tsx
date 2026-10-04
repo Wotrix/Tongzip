@@ -2,14 +2,14 @@
  * Home 首页 — 欢迎标题 · 三快捷卡(首卡实心主色)· 最近打开(带体积)· 最近任务(带进度条)
  */
 import { useEffect, useState } from 'react';
-import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn } from '../components/icons';
+import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn, IconReveal, IconCopy, IconDelete } from '../components/icons';
 import FileGlyph from '../components/FileGlyph';
-import { ContextMenu, useTaskHub } from '../components/ui';
+import { ContextMenu, useTaskHub, useToast } from '../components/ui';
 import { RunningCard } from '../components/TaskCenter';
 import { basename, fmtBytes, parentDir } from '../lib/format';
 import { cn } from '@/lib/utils';
 
-export default function Home({ recents, onOpen, onCompress, onCompressFolder, onNewArchive, onExtract, onOpenPick, onSeeAllTasks, onSeeRecent }: {
+export default function Home({ recents, onOpen, onCompress, onCompressFolder, onNewArchive, onExtract, onOpenPick, onSeeAllTasks, onSeeRecent, onRemoveRecent }: {
   recents: string[];
   onOpen(p: string): void;
   /** 选文件→压缩;若全是压缩包自动转解压 */
@@ -23,14 +23,19 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
   onOpenPick(): void;
   onSeeAllTasks(): void;
   onSeeRecent(): void;
+  /** 从最近列表移除一项(右键菜单) */
+  onRemoveRecent(p: string): void;
 }) {
   const { jobs, history } = useTaskHub();
+  const toast = useToast();
   const [alive, setAlive] = useState<Set<string>>(new Set());
   const [sizes, setSizes] = useState(new Map<string, number>());
   /** 首页板块可见性(设置页可关闭) */
   const [show, setShow] = useState({ recentOpen: true, recentTasks: true });
   /** 压缩卡的「选文件/选文件夹」菜单锚点 */
   const [pickMenu, setPickMenu] = useState<{ x: number; y: number } | null>(null);
+  /** 最近打开行的右键菜单锚点 */
+  const [recentMenu, setRecentMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   /* 每次进入首页重读设置,开关改动即时生效 */
   useEffect(() => {
@@ -114,16 +119,21 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
               <p className="px-3 py-1.5 text-[12.5px] text-muted-foreground">还没有记录 — 打开一个压缩包后会出现在这里。</p>
             ) : recents.slice(0, 5).map((p) => (
               <div key={p} className={cn(
-                'flex h-11 cursor-pointer items-center gap-[11px] rounded-md px-3 transition-colors hover:bg-accent',
+                'group flex h-11 cursor-pointer items-center gap-[11px] rounded-md px-3 transition-colors hover:bg-accent',
                 !alive.has(p) && 'opacity-50',
               )}
-                title={p} onClick={() => alive.has(p) && onOpen(p)}>
+                title={p} onClick={() => alive.has(p) && onOpen(p)}
+                onContextMenu={(e) => { e.preventDefault(); setRecentMenu({ x: e.clientX, y: e.clientY, path: p }); }}>
                 <FileGlyph name={basename(p)} isDir={false} size={22} />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">{basename(p)}</span>
                   <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-muted-foreground">{parentDir(p)}</span>
                 </span>
                 <span className="shrink-0 text-[11.5px] text-muted-foreground">{alive.has(p) ? fmtBytes(sizes.get(p) ?? 0) : '已移除'}</span>
+                <button className="grid size-[24px] flex-none place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-[var(--bg-active)] hover:text-foreground group-hover:opacity-100" title="打开文件位置"
+                  onClick={(e) => { e.stopPropagation(); void window.tz.revealInExplorer(p); }}>
+                  <IconReveal className="size-[14px]" />
+                </button>
               </div>
             ))}
           </section>
@@ -171,6 +181,20 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
           { label: '选择文件夹…', icon: <IconFolder />, onClick: () => { setPickMenu(null); onCompressFolder(); } },
         ]} />
       )}
+
+      {recentMenu && (() => {
+        const p = recentMenu.path, ok = alive.has(p);
+        const close = () => setRecentMenu(null);
+        return (
+          <ContextMenu x={recentMenu.x} y={recentMenu.y} onClose={close} items={[
+            { label: '打开', icon: <IconFolderOpen />, disabled: !ok, onClick: () => { close(); onOpen(p); } },
+            { label: '打开文件位置', icon: <IconReveal />, disabled: !ok, onClick: () => { close(); void window.tz.revealInExplorer(p); } },
+            { label: '复制文件路径', icon: <IconCopy />, onClick: () => { close(); void navigator.clipboard.writeText(p).then(() => toast('已复制到剪贴板')).catch(() => toast('复制失败', 'err')); } },
+            { sep: true, label: '' },
+            { label: '从最近列表移除', icon: <IconDelete />, danger: true, onClick: () => { close(); onRemoveRecent(p); } },
+          ]} />
+        );
+      })()}
     </div>
   );
 }

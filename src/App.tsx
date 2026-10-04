@@ -115,6 +115,15 @@ function Shell() {
     });
   }, []);
 
+  /* 从最近列表移除一项(首页/最近文件页右键菜单) */
+  const removeRecent = useCallback((archive: string) => {
+    setRecents((prev) => {
+      const next = prev.filter((p) => p !== archive);
+      void window.tz.setSettings({ recentArchives: next });
+      return next;
+    });
+  }, []);
+
   /* ---------- 重命名压缩包文件:成功后同步标签路径与最近记录 ---------- */
   const doRename = useCallback(async (oldPath: string, newName: string) => {
     const r = await window.tz.renameArchive(oldPath, newName);
@@ -432,9 +441,10 @@ function Shell() {
             onOpenPick={() => void pickAndOpen()}
             onSeeAllTasks={() => setView('tasks')}
             onSeeRecent={() => setView('recent')}
+            onRemoveRecent={removeRecent}
           />
         ) : view === 'recent' ? (
-          <RecentFiles recents={recents} onOpen={(p) => void openInTab(p)} />
+          <RecentFiles recents={recents} onOpen={(p) => void openInTab(p)} onRemoveRecent={removeRecent} />
         ) : view === 'archives' ? (
           <MyArchives
             onOpen={(p) => void openInTab(p)}
