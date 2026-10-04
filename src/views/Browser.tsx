@@ -486,8 +486,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         className={cn(
           'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground',
           sortKey === k && 'font-semibold text-primary',
-          /* 拖动中:被调列表头整块高亮(蓝底白字框),反馈一目了然 */
-          colDrag === k && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
+          /* 拖动中:被调列表头整块高亮(深一档品牌蓝底白字,比静止 primary 暗,反馈一目了然) */
+          colDrag === k && 'bg-[var(--accent-hover)] text-primary-foreground hover:bg-[var(--accent-hover)] hover:text-primary-foreground',
         )}>
         {label}{sortKey === k ? (asc ? ' ↑' : ' ↓') : ''}
       </button>
