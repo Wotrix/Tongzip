@@ -628,8 +628,11 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       {/* 目录树 + 文件列表 + 详情面板 */}
       <div className="flex min-h-0 flex-1">
         {treeMode === 'rail' ? (
-          <aside className="br-tree flex w-9 flex-none items-start justify-center overflow-auto border-r border-border bg-secondary py-1.5" title="展开目录树">
-            <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[15px]" onClick={() => setTreeMode('full')}><IconTree /></button>
+          /* 36px 图标竖条:树展开钮 + 详细信息开关(激活染 primary),纵排居中 */
+          <aside className="br-tree flex w-9 flex-none flex-col items-center gap-1 overflow-auto border-r border-border bg-secondary py-1.5">
+            <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[15px]" title="展开目录树" onClick={() => setTreeMode('full')}><IconTree /></button>
+            <button className={cn('grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[15px]', showDetails && 'text-primary hover:text-primary')}
+              title={`${showDetails ? '隐藏' : '显示'}详细信息面板 (Alt+D)`} onClick={() => setShowDetails((v) => !v)}><IconPanel /></button>
           </aside>
         ) : (
           /* 目录树面板:外层 div 控宽(手柄骑右缘,不受内层滚动影响);bt-row / on = 键盘导航与自动滚动的 querySelector 钩子,不承载样式 */
