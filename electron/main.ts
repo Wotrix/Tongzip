@@ -47,7 +47,7 @@ const DEFAULTS: Settings = {
   dblClickAction: 'open',
   rememberPassword: false,
   recentArchives: [],
-  accent: 'blue',
+  accent: 'violet',
   defaultFormat: '7z',
   defaultLevel: 5,
   showRecentOpen: true,
@@ -152,7 +152,7 @@ function createWindow(): BrowserWindow {
     show: false,
     frame: false,
     icon: path.join(__dirname, '..', 'build', 'icon.png'), // Linux/开发期窗口图标;Windows 任务栏取自 icon.ico
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17191c' : '#ffffff',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1b22' : '#ffffff',
     title: 'TongZip',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -182,7 +182,7 @@ function openBrowseWindow(dir: string): void {
     show: false,
     frame: false,
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17191c' : '#ffffff',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1b22' : '#ffffff',
     title: 'TongZip',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -225,7 +225,7 @@ function openTaskWindow(): void {
     show: false,
     frame: false,
     title: 'TongZip 任务',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17191c' : '#ffffff',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1b22' : '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

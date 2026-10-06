@@ -1,6 +1,6 @@
 /* =====================================================================
    TongZip — Tailwind 4 + shadcn/ui 令牌层(迁移期与 styles/app.css 共存)
-   中性色 = shadcn zinc;--primary = 品牌 accent 六色预设(精确原色值)
+   中性色 = shadcn zinc(色相≈286,与竹影紫同调);--primary = 品牌 accent 六色预设
    ===================================================================== */
 
 @import "tailwindcss";
@@ -30,12 +30,12 @@
   --border: oklch(0.923 0.003 264.54);
   --input: oklch(0.923 0.003 264.54);
 
-  /* 品牌 accent(与设置页六色预设一致,沿用旧精确色值) */
-  --primary: #2b6ef4;
+  /* 品牌 accent(与设置页六色预设一致;violet=基准竹影紫,蓝降为普通预设) */
+  --primary: #5a36de;
   --primary-foreground: #ffffff;
   --ring: color-mix(in srgb, var(--primary) 45%, transparent);
 
-  &[data-accent='purple'] { --primary: #7c5cf0; }
+  &[data-accent='blue']   { --primary: #2b6ef4; }
   &[data-accent='orange'] { --primary: #f0862b; }
   &[data-accent='cyan']   { --primary: #14b0c4; }
   &[data-accent='green']  { --primary: #2fa466; }
@@ -65,18 +65,18 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.274 0.006 286.033);
   --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent-ui: color-mix(in srgb, var(--primary) 16%, #1a1c1f);
+  --accent-ui: color-mix(in srgb, var(--primary) 16%, #1c1b22);
   --accent-ui-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.23);
   --destructive-foreground: oklch(0.141 0.005 285.825);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
 
-  /* 深色下 accent 提亮 15%(旧版深色统一成蓝色,迁移后各 accent 保持本色) */
-  --primary: color-mix(in srgb, #2b6ef4 85%, #fff);
+  /* 深色下 accent 提亮(旧版深色统一成蓝色,迁移后各 accent 保持本色) */
+  --primary: #7c5cf0;
   --ring: color-mix(in srgb, var(--primary) 55%, transparent);
 
-  &[data-accent='purple'] { --primary: color-mix(in srgb, #7c5cf0 85%, #fff); }
+  &[data-accent='blue']   { --primary: color-mix(in srgb, #2b6ef4 85%, #fff); }
   &[data-accent='orange'] { --primary: color-mix(in srgb, #f0862b 85%, #fff); }
   &[data-accent='cyan']   { --primary: color-mix(in srgb, #14b0c4 85%, #fff); }
   &[data-accent='green']  { --primary: color-mix(in srgb, #2fa466 85%, #fff); }

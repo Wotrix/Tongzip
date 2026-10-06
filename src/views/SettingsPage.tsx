@@ -17,8 +17,8 @@ const TABS = ['通用', '压缩设置', '外观', '集成', '高级'] as const;
 type Tab = typeof TABS[number];
 
 const ACCENTS: { v: AccentKey; label: string; color: string }[] = [
+  { v: 'violet', label: '竹影紫', color: '#5a36de' },
   { v: 'blue', label: '品牌蓝', color: '#2b6ef4' },
-  { v: 'purple', label: '紫罗兰', color: '#7c5cf0' },
   { v: 'orange', label: '活力橙', color: '#f0862b' },
   { v: 'cyan', label: '青碧', color: '#14b0c4' },
   { v: 'green', label: '翠绿', color: '#2fa466' },
@@ -72,9 +72,9 @@ const TAB_CLS = cn(
 /** 主题预览迷你窗口:中性内容线 + 单点 accent 强调 */
 const PREV_BASE_CLS = 'relative block h-[88px] overflow-hidden rounded-[8px] border border-border';
 const PREV_BG: Record<'light' | 'dark' | 'auto', string> = {
-  light: 'bg-[#f2f4f7]',
-  dark: 'bg-[#202429]',
-  auto: 'bg-[linear-gradient(105deg,#f2f4f7_0_46%,#202429_46%_100%)]',
+  light: 'bg-[#f2f1f7]',
+  dark: 'bg-[#232229]',
+  auto: 'bg-[linear-gradient(105deg,#f2f1f7_0_46%,#232229_46%_100%)]',
 };
 
 export default function SettingsPage() {
@@ -99,7 +99,7 @@ export default function SettingsPage() {
     void window.tz.setSettings(p).then((v) => {
       setS(v);
       if (p.accent) {
-        if (p.accent === 'blue') delete document.documentElement.dataset.accent;
+        if (p.accent === 'violet') delete document.documentElement.dataset.accent;
         else document.documentElement.dataset.accent = p.accent;
       }
     });

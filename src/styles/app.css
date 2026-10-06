@@ -1,19 +1,19 @@
 /* =====================================================================
    TongZip Design System — "现代文件工具"
-   Light First · 白底浅灰 · 深灰文字 · 蓝 Accent(可切换) · 空气感 · 精确
+   Light First · 白底紫调灰 · 深灰文字 · 竹影紫 Accent(可切换) · 空气感 · 精确
    ===================================================================== */
 
 :root {
   /* 表面 */
   --bg: #ffffff;            /* 主内容底 */
-  --bg-chrome: #f7f8f9;     /* 标题栏/工具条/状态条等界面外围 */
-  --bg-hover: #f1f3f5;      /* 行 hover */
-  --bg-active: #e9ecee;     /* 按下 */
+  --bg-chrome: #f7f6fb;     /* 标题栏/工具条/状态条等界面外围(紫调灰) */
+  --bg-hover: #f2f0f9;      /* 行 hover */
+  --bg-active: #eae7f4;     /* 按下 */
   --panel: #ffffff;
   --floating: #ffffff;
 
-  /* 品牌蓝 — 改 --accent 一处,其余派生色自动跟随 */
-  --accent: #2b6ef4;
+  /* 品牌紫 #5A36DE — 改 --accent 一处,其余派生色自动跟随 */
+  --accent: #5a36de;
   --accent-hover: color-mix(in srgb, var(--accent) 84%, #000);
   --accent-soft: color-mix(in srgb, var(--accent) 9%, #fff);
   --accent-ink: #ffffff;
@@ -21,14 +21,14 @@
   --ring: color-mix(in srgb, var(--accent) 28%, transparent);
 
   /* 分隔与描边 */
-  --line: #e4e7ea;
-  --line-strong: #d6dade;
+  --line: #e6e3ef;
+  --line-strong: #d9d4e7;
 
-  /* 文字 */
-  --ink: #22262b;
-  --ink-2: #565f69;
-  --ink-3: #8b94a0;
-  --ink-disabled: #b4bcc5;
+  /* 文字(紫调灰,与品牌色同相) */
+  --ink: #23212e;
+  --ink-2: #57536b;
+  --ink-3: #8d88a0;
+  --ink-disabled: #b9b4c7;
 
   /* 语义 */
   --danger: #cf4a3d;
@@ -39,11 +39,11 @@
 
   /* 文件类型色(参考图彩色图标体系) */
   --fx-folder: #f6b545;
-  --fx-archive: #2b6ef4;
+  --fx-archive: #5a36de;
   --fx-code: #14a8b0;
   --fx-image: #e06fb0;
-  --fx-doc: #5a7fe0;
-  --fx-text: #8b94a0;
+  --fx-doc: #6f6bd8;
+  --fx-text: #8d88a0;
 
   /* 几何 */
   --r-ctl: 6px;             /* 控件圆角:适中,不过度圆润 */
@@ -61,41 +61,41 @@
   --font-mono: "Cascadia Mono", "Consolas", "Menlo", monospace;
 }
 
-/* Accent 预设(设置页色块可切换) */
-[data-accent='purple'] { --accent: #7c5cf0; }
+/* Accent 预设(设置页色块可切换;violet=基准不另设) */
+[data-accent='blue']   { --accent: #2b6ef4; }
 [data-accent='orange'] { --accent: #f0862b; }
 [data-accent='cyan']   { --accent: #14b0c4; }
 [data-accent='green']  { --accent: #2fa466; }
 [data-accent='indigo'] { --accent: #4f5ff0; }
 
 [data-theme='dark'] {
-  --bg: #1a1c1f;
-  --bg-chrome: #212428;
-  --bg-hover: #2a2e33;
-  --bg-active: #33383e;
-  --panel: #1a1c1f;
-  --floating: #25282d;
-  --line: #32363b;
-  --line-strong: #3d4248;
-  --ink: #dde1e6;
-  --ink-2: #a8b0ba;
-  --ink-3: #77808b;
-  --ink-disabled: #565e68;
-  --accent: #5b8df5;
+  --bg: #1c1b22;
+  --bg-chrome: #23222b;
+  --bg-hover: #2c2a35;
+  --bg-active: #35333f;
+  --panel: #1c1b22;
+  --floating: #26242e;
+  --line: #37353f;
+  --line-strong: #43404e;
+  --ink: #e3e1ec;
+  --ink-2: #aea9bd;
+  --ink-3: #7e7a8d;
+  --ink-disabled: #5c5869;
+  --accent: #7c5cf0;
   --accent-hover: color-mix(in srgb, var(--accent) 80%, #fff);
-  --accent-soft: color-mix(in srgb, var(--accent) 18%, #1a1c1f);
-  --accent-ink: #0d1526;
-  --bg-select: color-mix(in srgb, var(--accent) 22%, #1a1c1f);
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, #1c1b22);
+  --accent-ink: #ffffff;
+  --bg-select: color-mix(in srgb, var(--accent) 22%, #1c1b22);
   --ring: color-mix(in srgb, var(--accent) 40%, transparent);
   --danger: #e07b6f;
   --danger-soft: #3a2622;
   --warn: #d0a04f;
   --warn-soft: #332b1c;
   --fx-folder: #e8a83e;
-  --fx-archive: #5b8df5;
+  --fx-archive: #7c5cf0;
   --fx-code: #3ec2c9;
   --fx-image: #d97fb4;
-  --fx-doc: #7d9ae6;
+  --fx-doc: #9d97ec;
   --shadow-float: 0 6px 24px rgba(0, 0, 0, .38), 0 1px 4px rgba(0, 0, 0, .3);
   --shadow-sheet: 0 16px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
   --mica-bg: rgba(45, 49, 55, .82);

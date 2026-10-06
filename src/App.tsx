@@ -106,7 +106,8 @@ function Shell() {
       if (typeof s.sidebarWidth === 'number' && Number.isFinite(s.sidebarWidth)) {
         setSbW(Math.min(260, Math.max(156, Math.round(s.sidebarWidth))));
       }
-      if (s.accent && s.accent !== 'blue') document.documentElement.dataset.accent = s.accent;
+      const acc = (s.accent as string) === 'purple' ? 'violet' : s.accent;
+      if (acc && acc !== 'violet') document.documentElement.dataset.accent = acc;
     })();
   }, []);
 

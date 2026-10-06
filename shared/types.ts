@@ -172,7 +172,7 @@ export interface ArchiveFile {
 }
 
 /** 主题强调色预设(与 app.css 的 [data-accent] 对应) */
-export type AccentKey = 'blue' | 'purple' | 'orange' | 'cyan' | 'green' | 'indigo';
+export type AccentKey = 'violet' | 'blue' | 'orange' | 'cyan' | 'green' | 'indigo';
 
 /** 资源管理器右键菜单项开关(参考 Bandizip 的自定义菜单) */
 export interface ContextMenuSettings {
@@ -206,7 +206,7 @@ export interface Settings {
   rememberPassword: boolean;
   /** 最近打开的压缩包路径(最新在前,上限 8) */
   recentArchives: string[];
-  /** 强调色,默认蓝 */
+  /** 强调色,默认竹影紫(#5A36DE) */
   accent: AccentKey;
   /** 新建压缩包的默认格式 */
   defaultFormat: ArchiveFormat;

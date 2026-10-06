@@ -14,7 +14,8 @@ void (async () => {
     const dark = s.theme === 'dark'
       || (s.theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    if (s.accent && s.accent !== 'blue') document.documentElement.dataset.accent = s.accent;
+    const acc = (s.accent as string) === 'purple' ? 'violet' : s.accent; // 旧存档紫罗兰→新基准竹影紫
+    if (acc && acc !== 'violet') document.documentElement.dataset.accent = acc;
   } catch {
     document.documentElement.dataset.theme = 'light';
   }
