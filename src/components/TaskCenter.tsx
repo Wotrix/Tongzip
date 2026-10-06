@@ -130,12 +130,13 @@ export function RunningCard({ job }: { job: TrackedJob }) {
           failed && 'bg-destructive',
         )} style={{ width: job.percent >= 0 ? `${job.percent}%` : undefined }} />
       </div>
-      <div className="mt-[5px] flex gap-3.5 text-[11.5px] text-muted-foreground tabular-nums">
-        <span>{job.percent >= 0 ? `${job.percent}%` : running ? '进行中' : ''}</span>
-        {speed != null && running && <span>{fmtBytes(speed)}/s</span>}
-        {running && !paused && <span>{fmtEta(etaSec)}</span>}
-        {paused && running && <span className="text-[var(--warn)]">进度已冻结</span>}
-        {job.totalBytes != null && <span>{fmtBytes(job.totalBytes)}</span>}
+      {/* 数据行:相邻单元格搭配(紫=体量/进度,灰=速率/时间),单元格间 1px 分隔线,对齐用户参考图 */}
+      <div className="mt-[6px] flex w-fit divide-x divide-border overflow-hidden rounded-[6px] text-[11.5px] tabular-nums [&>span]:px-2 [&>span]:py-[3px]">
+        <span className="bg-primary/[.13] text-foreground">{job.percent >= 0 ? `${job.percent}%` : running ? '进行中' : ''}</span>
+        {speed != null && running && <span className="bg-muted text-foreground">{fmtBytes(speed)}/秒</span>}
+        {running && !paused && <span className="bg-muted text-foreground">{fmtEta(etaSec)}</span>}
+        {paused && running && <span className="bg-primary/[.13] text-[color:var(--warn)]">进度已冻结</span>}
+        {job.totalBytes != null && <span className="bg-primary/[.13] text-foreground">{fmtBytes(job.totalBytes)}</span>}
       </div>
     </div>
   );
