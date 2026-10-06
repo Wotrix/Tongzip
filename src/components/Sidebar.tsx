@@ -1,11 +1,12 @@
 /**
- * 左侧导航栏 — shadcn 风:品牌块 · 主导航(active 染 primary 圆角 pill)· 底部标语
+ * 左侧导航栏 — shadcn 风:品牌块 · 主导航(active 染 primary 圆角 pill)· 底部版本号
  * 折叠态:宽/内边距/右边框一并过渡归零(注意 border 宽度计入 computed width,必须显式归零)
  * 宽度可拖(156–260,双击手柄回默认 156):拖动中用本地 dragW 避免每帧写设置,松手才 onResize 持久化
  */
 import { useState } from 'react';
 import { Logo, IconHome, IconClock, IconArchive, IconTasks, IconSettings, IconFolderOpen } from './icons';
 import { cn } from '@/lib/utils';
+import { version as appVersion } from '../../package.json';
 
 export type View = 'home' | 'recent' | 'archives' | 'tasks' | 'settings' | 'browse';
 
@@ -120,7 +121,7 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
 
       <div className={cn('text-center text-[11px] tracking-[.12em] text-muted-foreground transition-opacity duration-100',
         hidden && 'pointer-events-none opacity-0')}>
-        更简单 · 更高效
+        v{appVersion}
       </div>
     </nav>
   );
