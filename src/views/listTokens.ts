@@ -43,10 +43,11 @@ export const CELL_FONT = '12.5px "Segoe UI Variable Text", "Segoe UI", "Microsof
 /** 表头按 semibold 量:激活列加粗/箭头都不致裁切 */
 export const HEAD_FONT = '600 12px "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif';
 
-/** 表头/行共用网格模板:名称列未定宽时弹性保底 120px,窄容不下时溢出→横滚,表头随行对齐 */
+/** 表头/行共用网格模板:名称列默认宽由 JS 按最长文件名收紧(容得下即止),
+ * 尾部弹性填充列吸收剩余空间——行高亮仍横贯整行,名称列不再吃满宽 */
 export const LIST_GRID = cn(
-  'grid grid-cols-[30px_var(--col-name,minmax(120px,1fr))_var(--col-type)_var(--col-size)_var(--col-time)] items-center pl-3 pr-4',
-  'min-w-[calc(30px_+_max(120px,var(--col-name,120px))_+_var(--col-type)_+_var(--col-size)_+_var(--col-time)_+_28px)]',
+  'grid grid-cols-[30px_var(--col-name,200px)_var(--col-type)_var(--col-size)_var(--col-time)_minmax(24px,1fr)] items-center pl-3 pr-4',
+  'min-w-[calc(30px_+_var(--col-name,120px)_+_var(--col-type)_+_var(--col-size)_+_var(--col-time)_+_52px)]',
 );
 
 /** 自绘对勾的原生复选框 */

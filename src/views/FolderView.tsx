@@ -141,7 +141,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
   const [cols, setCols] = useState<Partial<Record<ColKey, number>> & { name?: number }>({});
   const [colDrag, setColDrag] = useState<AnyColKey | null>(null);
   useEffect(() => { void loadColWidths(setCols); }, []);
-  const autoW = useMemo<Record<ColKey, number>>(() => {
+  const autoW = useMemo<Record<ColKey | 'name', number>>(() => {
     const pad = 12 + 8;
     const fit = (k: ColKey, texts: string[], head: string) => clampCol(k,
       Math.max(
@@ -150,12 +150,17 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
       ) + pad,
     );
     return {
+      /* 名称列按最长文件名收紧(补图标 18 + 间隙 9 + pl-1 4),不吃满剩余空间 */
+      name: clampName(Math.max(
+        rows.reduce((m, r) => Math.max(m, measure(r.name, CELL_FONT)), 0) + 18 + 9 + 4,
+        measure('名称', HEAD_FONT) + 16,
+      ) + pad),
       type: fit('type', rows.map(typeOf), '类型'),
       size: fit('size', rows.filter((r) => !r.isDir).map((r) => fmtBytes(r.size)), '大小'),
       time: fit('time', rows.map((r) => r.mtime), '修改时间'),
     };
   }, [rows]);
-  const colW = (k: ColKey) => cols[k] ?? autoW[k];
+  const colW = (k: ColKey | 'name') => cols[k] ?? autoW[k];
   const commitCols = (next: typeof cols) => {
     setCols(next);
     void window.tz.setSettings({ listColumnWidths: next });
@@ -165,7 +170,8 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    const base = k === 'name' ? (cols.name ?? (el.parentElement ? el.parentElement.getBoundingClientRect().width : 200)) : (cols[k] ?? autoW[k]);
+    /* 各列未拖过时的拖动基准 = 当前自适应宽 */
+    const base = cols[k] ?? autoW[k];
     const at = (ev: PointerEvent) => (k === 'name' ? clampName(base + ev.clientX - startX) : clampCol(k, base + ev.clientX - startX));
     const move = (ev: PointerEvent) => setCols((p) => ({ ...p, [k]: at(ev) }));
     const up = (ev: PointerEvent) => {
@@ -364,7 +370,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
       <div className="flex min-h-0 flex-1">
         <div
           className={cn('entry-list min-h-0 flex-1 overflow-auto pb-5', colDrag && 'select-none')}
-          style={{ '--col-type': `${colW('type')}px`, '--col-size': `${colW('size')}px`, '--col-time': `${colW('time')}px`, ...(cols.name ? { '--col-name': `${cols.name}px` } : {}) } as React.CSSProperties}
+          style={{ '--col-name': `${colW('name')}px`, '--col-type': `${colW('type')}px`, '--col-size': `${colW('size')}px`, '--col-time': `${colW('time')}px` } as React.CSSProperties}
           onContextMenu={(e) => onContextMenu(e, null)}
         >
           <div className={cn(LIST_GRID, 'list-head sticky top-0 z-[1] h-8 border-b border-border bg-background text-xs text-muted-foreground')}>
@@ -375,6 +381,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
             {sortHead('type', '类型')}
             {sortHead('size', '大小')}
             {sortHead('time', '修改时间')}
+            <span aria-hidden />
           </div>
           {err && (
             <div className="mx-4 mt-4 flex items-center gap-2.5 rounded-lg border border-border bg-secondary px-3.5 py-3 text-[12.5px]">
@@ -405,6 +412,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
               <div className="type truncate px-1.5 text-[12.5px] tabular-nums text-muted-foreground">{typeOf(r)}</div>
               <div className="size truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.isDir ? '' : fmtBytes(r.size)}</div>
               <div className="time truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>
+              <span aria-hidden />
             </div>
           ))}
         </div>

@@ -113,8 +113,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    /* name 未定宽时以当前实测格宽为基准(自适应宽随窗口变,只在按下瞬间取一次) */
-    const base = k === 'name' ? (cols.name ?? (el.parentElement ? el.parentElement.getBoundingClientRect().width : 200)) : (cols[k] ?? autoW[k]);
+    /* 各列未拖过时的拖动基准 = 当前自适应宽 */
+    const base = cols[k] ?? autoW[k];
     const at = (ev: PointerEvent) => (k === 'name' ? clampName(base + ev.clientX - startX) : clampCol(k, base + ev.clientX - startX));
     const move = (ev: PointerEvent) => setCols((p) => ({ ...p, [k]: at(ev) }));
     const up = (ev: PointerEvent) => {
@@ -274,8 +274,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     return [...list].sort(cmp);
   }, [info, prefix, sortKey, asc, query, searching]);
 
-  /* 默认列宽 = 当前目录内容自适应收紧:表头/最长值取大者 + 内边距,完整不裁切 */
-  const autoW = useMemo<Record<ColKey, number>>(() => {
+  /* 默认列宽 = 当前目录内容自适应收紧:表头/最长值取大者 + 内边距,完整不裁切;
+     名称列同样按最长文件名收紧(补图标 18 + 间隙 9 + pl-1 4),不再吃满剩余空间 */
+  const autoW = useMemo<Record<ColKey | 'name', number>>(() => {
     const pad = 12 /* px-1.5 两侧 */ + 8 /* 列间距余量 */;
     const fit = (k: ColKey, texts: string[], head: string) => clampCol(k,
       Math.max(
@@ -284,13 +285,17 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       ) + pad,
     );
     return {
+      name: clampName(Math.max(
+        rows.reduce((m, r) => Math.max(m, measure(r.name, CELL_FONT)), 0) + 18 + 9 + 4,
+        measure('名称', HEAD_FONT) + 16,
+      ) + pad),
       type: fit('type', rows.map((r) => typeLabel(r)), '类型'),
       size: fit('size', rows.filter((r) => !r.isDir).map((r) => fmtBytes(r.size)), '大小'),
       time: fit('time', rows.map((r) => r.mtime), '修改时间'),
     };
   }, [rows]);
   /** 生效列宽:用户拖过用用户值,否则自适应 */
-  const colW = (k: ColKey) => cols[k] ?? autoW[k];
+  const colW = (k: ColKey | 'name') => cols[k] ?? autoW[k];
 
   /* Delete / Enter / Ctrl+A / Ctrl+E 等快捷键(与菜单项 kbd 标注一致) */
   const stateRef = useRef({ sel: new Set<string>(), rows: [] as ArchiveEntry[] });
@@ -631,7 +636,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               list-head/entry-list/row/ck-box 类名保留作 CDP 探针对选择器钩子,不承载样式 */}
           <div
             className={cn('entry-list min-h-0 flex-1 overflow-auto pb-5', colDrag && 'select-none')}
-            style={{ '--col-type': `${colW('type')}px`, '--col-size': `${colW('size')}px`, '--col-time': `${colW('time')}px`, ...(cols.name ? { '--col-name': `${cols.name}px` } : {}) } as React.CSSProperties}
+            style={{ '--col-name': `${colW('name')}px`, '--col-type': `${colW('type')}px`, '--col-size': `${colW('size')}px`, '--col-time': `${colW('time')}px` } as React.CSSProperties}
             onContextMenu={(e) => onContextMenu(e, null)}
           >
             <div className={cn(LIST_GRID, 'list-head sticky top-0 z-[1] h-8 border-b border-border bg-background text-xs text-muted-foreground')}>
@@ -642,6 +647,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               {sortHead('type', '类型')}
               {sortHead('size', '大小')}
               {sortHead('time', '修改时间')}
+              <span aria-hidden />
             </div>
             {rows.length === 0 && (
               <div className="empty-note py-16 text-center text-[13px] text-muted-foreground">{searching ? `没有匹配 “${query.trim()}” 的文件` : '空文件夹'}</div>
@@ -865,6 +871,7 @@ function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMe
         {r.isDir ? '' : fmtBytes(r.size)}
       </div>
       <div className="time truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>
+      <span aria-hidden />
     </div>
   );
 }
