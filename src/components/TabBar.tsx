@@ -1,20 +1,25 @@
 /**
  * 多标签栏 — 顶栏下方独立一行,仅浏览视图渲染(PeaZip 式多包同开)
- * 标签 = 包名 + hover 关闭钮;尾部「+」打开新包;溢出横向滚动;中键可关闭。
+ * 标签 = 包名/目录名 + hover 关闭钮;尾部「+」新标签菜单(压缩包/文件夹);溢出横向滚动;中键可关闭。
  */
-import { IconAdd, IconClose } from './icons';
+import { useState } from 'react';
+import { IconAdd, IconArchive, IconClose, IconFolder } from './icons';
 import { basename } from '../lib/format';
+import { ContextMenu } from './ui';
 import { cn } from '@/lib/utils';
 
-export interface TabItem { id: string; archive: string }
+export interface TabItem { id: string; archive: string; dir?: string }
 
-export default function TabBar({ tabs, activeId, onSelect, onClose, onNew }: {
+export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewFolder }: {
   tabs: TabItem[];
   activeId: string | null;
   onSelect(id: string): void;
   onClose(id: string): void;
   onNew(): void;
+  /** 新标签浏览磁盘文件夹 */
+  onNewFolder?(): void;
 }) {
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-secondary px-2.5">
       <div className="flex h-full min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -26,10 +31,11 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew }: {
               'text-muted-foreground hover:bg-accent hover:text-foreground',
               t.id === activeId && 'border border-border bg-card font-semibold text-primary shadow-sm',
             )}
-            title={t.archive}
+            title={t.archive || t.dir}
             onClick={() => onSelect(t.id)}
             onAuxClick={(e) => { if (e.button === 1) onClose(t.id); }}>
-            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{basename(t.archive)}</span>
+            {t.dir && <IconFolder className="size-[13px] shrink-0 text-primary" />}
+            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{basename(t.archive || t.dir || '')}</span>
             <button className="grid size-[17px] shrink-0 place-items-center rounded-[4px] text-current opacity-0 transition-opacity duration-100 hover:bg-foreground/10 focus-visible:opacity-100 group-hover/tab:opacity-100" title="关闭标签 (Ctrl+W)"
               onClick={(e) => { e.stopPropagation(); onClose(t.id); }}>
               <IconClose className="size-[11px]" />
@@ -37,9 +43,18 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew }: {
           </div>
         ))}
       </div>
-      <button className="grid size-[23px] shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="打开其他压缩包 (Ctrl+T)" onClick={onNew}>
+      <button className="grid size-[23px] shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="新建标签 (Ctrl+T)" onClick={(e) => {
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setAddMenu({ x: r.left, y: r.bottom + 4 });
+      }}>
         <IconAdd className="size-[13px]" />
       </button>
+      {addMenu && (
+        <ContextMenu x={addMenu.x} y={addMenu.y} onClose={() => setAddMenu(null)} items={[
+          { label: '打开压缩包…', icon: <IconArchive />, onClick: onNew },
+          ...(onNewFolder ? [{ label: '打开文件夹…', icon: <IconFolder />, onClick: onNewFolder }] : []),
+        ]} />
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import type { ArchiveEntry, ArchiveFormat, ArchiveInfo, JobKind } from '@shared/
 import { isArchiveExt } from '@shared/types';
 import Home from './views/Home';
 import Browser, { type BrowserActions, type NavState } from './views/Browser';
+import FolderView from './views/FolderView';
 import RecentFiles from './views/RecentFiles';
 import MyArchives from './views/MyArchives';
 import TasksPage from './views/TasksPage';
@@ -38,8 +39,8 @@ interface Ctx { archive: string; info: ArchiveInfo }
 /** 提示条内小按钮(旧 .tbtn.sm:27px / 9px 内边距 / 12px 字) */
 const SB_BTN = 'h-[27px] gap-[7px] rounded-md px-[9px] text-xs font-normal shadow-none [&_svg]:size-[15px]';
 
-/** 浏览标签:同一压缩包一个 tab,状态在 TabView 内部自持 */
-interface Tab extends Ctx { id: string }
+/** 浏览标签:压缩包标签持有 archive/info;文件夹标签(dir)复用同一套标签栏与 TabView 分流 */
+interface Tab extends Ctx { id: string; dir?: string }
 
 /** Shell 注入给 TabView 的全局能力(对话框/任务/密码复用) */
 interface HostApi {
@@ -54,6 +55,8 @@ interface HostApi {
   toggleSidebar(): void;
   quickExtract(archive: string, intoSameDir?: boolean, entries?: string[], password?: string, totalBytes?: number): Promise<void>;
   pickAndOpen(): Promise<void>;
+  /** 主窗:在标签中打开压缩包(文件夹标签内双击条目用) */
+  openInTab(archive: string): Promise<void>;
   registerReload(fn: (() => Promise<void>) | null): void;
 }
 
@@ -197,6 +200,17 @@ function Shell() {
     toast(r.message, 'err');
   }, [tabs, toast, pushRecent, createTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ---------- 磁盘文件夹标签(Bandizip 式浏览):同目录已开则切换,否则新建 ---------- */
+  const openFolder = useCallback((dirRaw: string) => {
+    const dir = dirRaw.replace(/\\/g, '/');
+    const found = tabs.find((t) => t.dir === dir);
+    if (found) { setActiveId(found.id); setView('browse'); return; }
+    const id = `tab-${++tabSeq.current}`;
+    setTabs((ts) => [...ts, { id, archive: '', info: { type: '', entries: [], physSize: 0, hasEncrypted: false }, dir }]);
+    setActiveId(id);
+    setView('browse');
+  }, [tabs]);
+
   /* ---------- 快速解压(entries 为空=全部) ---------- */
   const quickExtract = useCallback(async (
     archive: string, intoSameDir = false, entries: string[] = [], password?: string, totalBytes?: number,
@@ -219,6 +233,8 @@ function Shell() {
         } else toast(j.message ?? '解压失败', 'err');
       }
     }, { label: basename(archive), path: archive, totalBytes });
+    /* 路径登记供任务窗「打开位置」:invoke 返回即写,与 track 注册同时序 */
+    void window.tz.taskPathSet(r.data.taskId, { archive, dest: dest.replace(/\\/g, '/') });
   }, [hub, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- shell / 双击 启动指令 ---------- */
@@ -292,6 +308,12 @@ function Shell() {
     if (isArchiveExt(ext)) await openInTab(p);
     else toast('所选文件不是可识别的压缩包。', 'err');
   };
+
+  /* ---------- 选一个磁盘文件夹→新标签应内浏览 ---------- */
+  const pickFolderAndOpen = useCallback(async () => {
+    const r = await window.tz.pickFolder();
+    if (r.ok && r.data) openFolder(r.data);
+  }, [openFolder]);
 
   /* ---------- 首页智能动作:压缩包→解压,其他文件→压缩 ---------- */
   const isArchivePath = (p: string) => {
@@ -387,6 +409,7 @@ function Shell() {
     toggleSidebar,
     quickExtract: (a, d, e, p, tb) => quickExtract(a, d ?? false, e ?? [], p, tb),
     pickAndOpen,
+    openInTab,
     registerReload: (fn) => { reloadRef.current = fn; },
   };
 
@@ -401,13 +424,13 @@ function Shell() {
         width={sbW}
         onResize={resizeSidebar}
         runningCount={runningCount}
-        activeArchive={activeTab ? basename(activeTab.archive) : null}
+        activeArchive={activeTab ? basename(activeTab.archive || activeTab.dir || '') : null}
         onNav={(v) => { if (v !== 'browse' || tabs.length) setView(v); }}
       />
 
       <div className="main-col">
         {/* 侧栏隐藏的浏览视图:顶栏标题位补显示当前压缩包名(竞品标题栏形态,无菜单栏) */}
-        <TopBar archiveLabel={sbHidden && view === 'browse' && activeTab ? basename(activeTab.archive) : null} />
+        <TopBar archiveLabel={sbHidden && view === 'browse' && activeTab ? basename(activeTab.archive || activeTab.dir || '') : null} />
         {engineWarn && (
           <div className="flex flex-none items-center gap-[9px] border-b border-border bg-[var(--warn-soft)] px-4 py-2 text-[12.5px] text-foreground">
             <IconWarn className="size-[15px] shrink-0 text-[color:var(--warn)]" />
@@ -422,7 +445,8 @@ function Shell() {
             <TabBar tabs={tabs} activeId={activeId}
               onSelect={(id) => setActiveId(id)}
               onClose={(id) => closeTab(id)}
-              onNew={() => void pickAndOpen()} />
+              onNew={() => void pickAndOpen()}
+              onNewFolder={() => void pickFolderAndOpen()} />
             <div className="tabs-stage">
               {tabs.map((t) => (
                 <div key={t.id} className="tab-slot" hidden={t.id !== activeId}>
@@ -555,6 +579,7 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
         if (j.status === 'done') toast('压缩包完好。');
         else if (j.status === 'error') toast(j.message ?? '测试失败', 'err');
       }, { label: basename(archive), path: archive, totalBytes: info.physSize });
+      void window.tz.taskPathSet(r.data.taskId, { archive });
     },
     onDelete: (entries: string[]) => {
       if (!entries.length) return;
@@ -568,6 +593,7 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
             if (j.status === 'done') { toast('已删除。'); await reload(); }
             else if (j.status === 'error') toast(j.message ?? '删除失败', 'err');
           }, { label: basename(archive), path: archive });
+          void window.tz.taskPathSet(r.data.taskId, { archive });
         },
       });
     },
@@ -607,6 +633,13 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
     onForward: goForward,
     onGoto: goto,
   };
+
+  /* 文件夹标签分流:TabView 钩子已全部执行,此处早退安全 */
+  if (tab.dir) {
+    return <FolderView dir={tab.dir}
+      onOpenArchive={(p) => void host.openInTab(p)}
+      onCompress={(sources) => host.openCompress({ sources })} />;
+  }
 
   return <Browser info={info} archive={archive} query={query} onSearch={setQuery} actions={actions} nav={nav} sidebarHidden={sbHidden} />;
 }

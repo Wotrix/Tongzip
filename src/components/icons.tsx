@@ -3,8 +3,8 @@
 import {
   Archive, Bell, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Code, Copy,
   Eye, ExternalLink, File, FileText, Folder, FolderDown, FolderOpen, FolderTree, FolderUp,
-  Home, Image, ListChecks, Lock, Minus, Monitor, Moon, MoreHorizontal, PanelLeft, PanelRight,
-  Pause, Pencil, Play, Plus, Search, Settings, Shrink, SlidersHorizontal, Square, Sun,
+  Home, Image, ListChecks, Lock, Minus, Monitor, Moon, MoreHorizontal, OctagonX, PanelLeft, PanelRight,
+  Pause, Pencil, Play, Plus, RefreshCw, Search, Settings, Shrink, SlidersHorizontal, Square, Sun,
   Trash2, TriangleAlert, LoaderCircle, X,
   type LucideIcon,
 } from 'lucide-react';
@@ -111,3 +111,7 @@ export const IconMore = mk(MoreHorizontal);
 export const IconCode = mk(Code);
 /** 图片类文件 */
 export const IconImage = mk(Image);
+/** 停止任务(Bandizip 式红叉钮) */
+export const IconStop = mk(OctagonX);
+/** 刷新目录 */
+export const IconRefresh = mk(RefreshCw);

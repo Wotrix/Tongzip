@@ -3,8 +3,8 @@
  */
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
-  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, IpcResult,
-  LaunchPayload, ProgressEvent, Settings, ShellState,
+  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, FolderEntry,
+  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState,
 } from '../shared/types';
 
 type Unsub = () => void;
@@ -67,6 +67,21 @@ const api = {
   /* 任务窗口:压缩启动时打开/唤回;晚开窗口用快照回放进行中任务 */
   taskWindowOpen: (): Promise<boolean> => ipcRenderer.invoke('tz:task-window-open'),
   taskSnapshot: (): Promise<ProgressEvent[]> => ipcRenderer.invoke('tz:task-snapshot'),
+  /** 任务路径登记表快照:taskId → {archive输出/解压目标}(任务窗「打开位置」数据源) */
+  taskPaths: (): Promise<Record<string, { archive?: string; output?: string; dest?: string }>> =>
+    ipcRenderer.invoke('tz:task-paths'),
+  /** 渲染层启动任务后登记路径(invoke 返回时才知道 taskId) */
+  taskPathSet: (taskId: string, p: { archive?: string; output?: string; dest?: string }): Promise<boolean> =>
+    ipcRenderer.invoke('tz:task-path-set', taskId, p),
+
+  /* 文件夹浏览 */
+  listDir: (dir: string): Promise<IpcResult<FolderEntry[]>> => ipcRenderer.invoke('tz:dir-list', dir),
+  /** 用系统默认程序打开文件/文件夹(区别于 openExternal 只处理 URL) */
+  openPath: (p: string): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:open-path', p),
+  /** 移入回收站(非永久删除) */
+  trash: (paths: string[]): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:trash', paths),
+  /** 新开独立文件夹浏览窗口 */
+  browseWindowOpen: (dir: string): Promise<boolean> => ipcRenderer.invoke('tz:browse-window-open', dir),
 
   /* 启动事件(shell/双击传入的目标) */
   getLaunchPayload: (): Promise<LaunchPayload | null> => ipcRenderer.invoke('tz:get-launch-payload'),

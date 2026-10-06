@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
 import type {
-  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, IpcResult,
-  LaunchPayload, ProgressEvent, Settings, ShellState,
+  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, FolderEntry,
+  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState,
 } from '@shared/types';
 
 declare global {
@@ -39,6 +39,12 @@ declare global {
       winClose(): void;
       taskWindowOpen(): Promise<boolean>;
       taskSnapshot(): Promise<ProgressEvent[]>;
+      taskPaths(): Promise<Record<string, { archive?: string; output?: string; dest?: string }>>;
+      taskPathSet(taskId: string, p: { archive?: string; output?: string; dest?: string }): Promise<boolean>;
+      listDir(dir: string): Promise<IpcResult<FolderEntry[]>>;
+      openPath(p: string): Promise<IpcResult<void>>;
+      trash(paths: string[]): Promise<IpcResult<void>>;
+      browseWindowOpen(dir: string): Promise<boolean>;
       getLaunchPayload(): Promise<LaunchPayload | null>;
       onLaunch(fn: (p: LaunchPayload) => void): () => void;
       onProgress(fn: (ev: ProgressEvent) => void): () => void;

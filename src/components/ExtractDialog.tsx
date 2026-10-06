@@ -59,6 +59,8 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
     const job: ExtractJob = { archive, dest, entries, overwrite, password, renames: Object.keys(renames).length ? renames : undefined };
     const r = await window.tz.extract(job);
     if (!r.ok) { setBusy(false); toast(r.message, 'err'); return; }
+    // 路径登记:任务窗「打开位置」双钮数据源(目标夹=dest,源包=archive)
+    void window.tz.taskPathSet(r.data.taskId, { archive, dest: dest.replace(/\\/g, '/') });
     api.trackTask(r.data.taskId, 'extract', async (j) => {
       setBusy(false);
       if (j.status === 'done') { toast(`已解压到 ${dest}`); onClose(); }

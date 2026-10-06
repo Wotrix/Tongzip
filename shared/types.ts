@@ -130,6 +130,21 @@ export interface ProgressEvent {
   message?: string;
 }
 
+/** 磁盘目录条目 — 应用内文件夹浏览的数据单元(路径统一正斜杠) */
+export interface FolderEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  /** 字节(文件夹为 0,列表不展开统计) */
+  size: number;
+  /** 修改时间,已格式化为 YYYY-MM-DD HH:MM */
+  mtime: string;
+  /** .exe/.lnk 等可直接执行的系统文件 */
+  isExe: boolean;
+  /** 可被本应用打开的压缩包扩展名 */
+  isArchive: boolean;
+}
+
 /** IPC 统一响应壳 */
 export type IpcResult<T = void> =
   | { ok: true; data: T }

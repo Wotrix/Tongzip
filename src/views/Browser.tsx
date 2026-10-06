@@ -18,59 +18,12 @@ import { Input } from '../components/ui/input';
 import { cn } from '@/lib/utils';
 import { fmtBytes, fmtRatio, basename, parentDir, FORMAT_LABEL } from '../lib/format';
 
-/* ---------- T11 版式令牌:导航行 / 动作行 / 状态栏(平移自 app.css 同名区块) ---------- */
-
-/** 返回/前进/侧栏开关箭头:30px 方形 ghost 图标钮,.on 态用 accent 单点提示 */
-const ARROW_CLS = cn(
-  'inline-flex size-[30px] shrink-0 items-center justify-center rounded-md',
-  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-  'disabled:opacity-50 disabled:hover:bg-transparent',
-);
-/** 面包屑段落:悬停浅底、超宽省略(旧 .crumb) */
-const CRUMB_CLS = cn(
-  'block max-w-[260px] shrink-0 truncate rounded-md px-2 py-1 text-[13px]',
-  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-);
-/** 工具栏按钮皮肤(旧 .tbtn:32px 高 / 12.5px 字 / 15px 图标),与 shadcn Button 尺寸类同层级覆盖 */
-const TB_CLS = cn(
-  'h-8 shrink-0 gap-[7px] rounded-md px-3 text-[12.5px] font-normal whitespace-nowrap',
-  /* button 基座带 [&_svg:not([class*=size-])]:size-4(选择器多一层 :not, specificity 更高),
-     所以图标尺寸必须带 ! 才能压住它 — 否则全部沦为 16px */
-  'has-[>svg]:px-3 shadow-none [&_svg]:size-[15px]!',
-);
-/** 描边按钮(旧 .tbtn.bordered):暗色下沿用页面底,不吃 shadcn 的 input/30 灰底 */
-const TB_OUTLINE_CLS = cn(TB_CLS, 'border-border bg-background dark:bg-background dark:hover:bg-accent');
-
-/* ---------- T13 版式令牌:文件列表(列宽 CSS 变量单一真相,表头与行共用同一网格模板) ---------- */
-/** 测量不可用/NaN 时的兜底宽(列默认值 = 内容自适应 autoW,不再是固定值) */
-const COL_DEFAULTS = { type: 72, size: 72, time: 130 } as const;
-type ColKey = keyof typeof COL_DEFAULTS;
-/** 任意可拖列:name 特殊——缺省自适应,拖过才定宽,双击回自适应 */
-type AnyColKey = ColKey | 'name';
-/** 每列拖动范围 [下限, 上限];时间列下限要容得下完整时间戳 */
-const COL_LIMITS: Record<ColKey, [number, number]> = { type: [72, 320], size: [72, 320], time: [110, 320] };
-const NAME_RANGE: [number, number] = [120, 600];
-const clampCol = (k: ColKey, w: number) => Math.min(COL_LIMITS[k][1], Math.max(COL_LIMITS[k][0], Math.round(w) || COL_DEFAULTS[k]));
-const clampName = (w: number) => Math.min(NAME_RANGE[1], Math.max(NAME_RANGE[0], Math.round(w) || 200));
-/* canvas 文本测量:默认列宽按当前目录最长内容收紧(尽量小且完整) */
-const _mctx = document.createElement('canvas').getContext('2d');
-const measure = (txt: string, font: string) => { if (!_mctx) return txt.length * 7; _mctx.font = font; return _mctx.measureText(txt).width; };
-const CELL_FONT = '12.5px "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif';
-/** 表头按 semibold 量:激活列加粗/箭头都不致裁切 */
-const HEAD_FONT = '600 12px "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif';
-/** 表头/行共用:名称列未定宽时弹性保底 120px;窄容不下时 min-w 强制溢出→滚动容器横滚,表头随行对齐 */
-const LIST_GRID = cn(
-  'grid grid-cols-[30px_var(--col-name,minmax(120px,1fr))_var(--col-type)_var(--col-size)_var(--col-time)] items-center pl-3 pr-4',
-  'min-w-[calc(30px_+_max(120px,var(--col-name,120px))_+_var(--col-type)_+_var(--col-size)_+_var(--col-time)_+_28px)]',
-);
-/** 自绘对勾的原生复选框(旧 .ck-box input 的 appearance:none 画法平移;勾选色仍用 :root 的 --accent-ink) */
-const CK_CLS = cn(
-  'relative size-[15px] shrink-0 cursor-pointer appearance-none rounded-[4px] border-[1.5px] border-input bg-background',
-  'transition-[background,border-color] duration-100 hover:border-primary',
-  'checked:border-primary checked:bg-primary',
-  "after:absolute after:left-[4px] after:top-[1px] after:h-[9px] after:w-[5px] after:rotate-45 after:content-['']",
-  'after:border-b-[1.8px] after:border-r-[1.8px] after:border-[color:var(--accent-ink)] after:opacity-0 checked:after:opacity-100',
-);
+/* ---------- T11/T13 版式令牌:与 FolderView 共享单一真相(listTokens) ---------- */
+import {
+  ARROW_CLS, CRUMB_CLS, TB_CLS, TB_OUTLINE_CLS, COL_DEFAULTS, clampCol, clampName,
+  measure, CELL_FONT, HEAD_FONT, LIST_GRID, CK_CLS, loadColWidths,
+  type ColKey, type AnyColKey,
+} from './listTokens';
 
 /** 浏览导航状态(由 App 上提历史,Browser 导航行消费) */
 export interface NavState {
@@ -147,15 +100,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   useEffect(() => {
     void (async () => {
       const s = await window.tz.getSettings();
-      const c = s.listColumnWidths;
       if (typeof s.treeWidth === 'number') setTreeW(Math.min(400, Math.max(160, Math.round(s.treeWidth)) || 160));
-      if (!c) return;
-      setCols((p) => ({
-        type: typeof c.type === 'number' ? clampCol('type', c.type) : p.type,
-        size: typeof c.size === 'number' ? clampCol('size', c.size) : p.size,
-        time: typeof c.time === 'number' ? clampCol('time', c.time) : p.time,
-        name: typeof c.name === 'number' ? clampName(c.name) : undefined,
-      }));
+      await loadColWidths(setCols);
     })();
   }, []);
   const commitCols = (next: typeof cols) => {

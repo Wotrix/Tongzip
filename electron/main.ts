@@ -8,7 +8,7 @@ import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
-  ArchiveFile, CompressJob, ExtractJob, IpcResult, LaunchPayload, ProgressEvent, Settings,
+  ArchiveFile, CompressJob, ExtractJob, FolderEntry, IpcResult, LaunchPayload, ProgressEvent, Settings,
 } from '../shared/types';
 import { isArchiveExt } from '../shared/types';
 import {
@@ -30,6 +30,9 @@ let win: BrowserWindow | null = null;
 let taskWin: BrowserWindow | null = null;
 /** 任务快照:taskId → 最新进度事件(任务窗口晚开时回放进行中任务;终态延迟清除) */
 const taskFeed = new Map<string, ProgressEvent>();
+/** 任务路径登记:taskId → 源包/输出/解压目标(任务窗「打开位置」与解压完成自动开窗的数据源) */
+interface TaskPaths { archive?: string; output?: string; dest?: string }
+const taskPaths = new Map<string, TaskPaths>();
 let pendingPayload: LaunchPayload | null = null;
 
 /** 极简 JSON 设置存储(同步读写,存于 userData 目录) */
@@ -168,6 +171,34 @@ function createWindow(): BrowserWindow {
   return w;
 }
 
+/** 独立文件夹浏览窗口(Bandizip 解压完成式:新窗直达目标目录) */
+function openBrowseWindow(dir: string): void {
+  const q = encodeURIComponent(dir);
+  const w = new BrowserWindow({
+    width: 1000,
+    height: 660,
+    minWidth: 800,
+    minHeight: 500,
+    show: false,
+    frame: false,
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17191c' : '#ffffff',
+    title: 'TongZip',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+    },
+  });
+  w.once('ready-to-show', () => w.show());
+  if (DEV_URL) {
+    void w.loadURL(`${DEV_URL}${DEV_URL.includes('?') ? '&' : '?'}window=folder&dir=${q}`);
+  } else {
+    void w.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), { query: { window: 'folder', dir: q } });
+  }
+}
+
 function send(ev: ProgressEvent): void {
   /* 快照维护:任务窗口打开瞬间靠它回放已在跑的任务;终态 6s 后清理 */
   taskFeed.set(ev.taskId, ev);
@@ -277,9 +308,24 @@ function installIpc(): void {
   ipcMain.handle('tz:archive-list', wrap((a: { archive: string; password?: string }) => listArchive(a.archive, a.password)));
   ipcMain.handle('tz:compress', wrap(async (job: CompressJob) => {
     if (!job.output) throw new EngineError('NO_OUTPUT', '缺少输出路径。');
-    return runCompress(job, send);
+    const r = runCompress(job, send);
+    /* taskId 由引擎内部先生成后同步登记:runCompress 同步阶段即 tasks.set,invoke 返回时已可查 */
+    return r;
   }));
-  ipcMain.handle('tz:extract', wrap(async (job: ExtractJob) => runExtract(job, send)));
+  ipcMain.handle('tz:extract', wrap(async (job: ExtractJob) => {
+    /* 解压完成自动新开浏览窗口直达目标目录(Bandizip 式默认行为):
+       包名与目标文件夹同名 = 解进了新建同名文件夹,展示其父级才能看到新文件夹 */
+    const wrapSend: (ev: ProgressEvent) => void = (ev) => {
+      if (ev.status === 'done' && ev.kind === 'extract') {
+        const dest = job.dest.replace(/\\/g, '/').replace(/\/+$/, '');
+        const stem = path.basename(job.archive).replace(/\.[^.]+$/, '');
+        const shown = path.basename(dest).toLowerCase() === stem.toLowerCase() ? path.dirname(dest) : dest;
+        openBrowseWindow(shown);
+      }
+      send(ev);
+    };
+    return runExtract(job, wrapSend);
+  }));
   ipcMain.handle('tz:test', wrap((a: { archive: string; password?: string }) => runTest(a.archive, a.password, send)));
   ipcMain.handle('tz:delete-entries', wrap((a: { archive: string; entries: string[] }) => runDelete(a.archive, a.entries, send)));
   /* 重命名磁盘上的压缩包文件:保留原扩展名,校验合法名与目标冲突,成功后返回新路径 */
@@ -376,9 +422,42 @@ function installIpc(): void {
     /* 按 sender 关各自窗口:任务窗口的关闭钮不应误关主窗 */
     BrowserWindow.fromWebContents(e.sender)?.close();
   });
-  /* 任务窗口:打开/唤回 + 进行中任务快照(晚开的窗口回放) */
+  /* 任务窗口:打开/唤回 + 进行中任务快照(晚开的窗口回放)+ 路径登记(打开位置) */
   ipcMain.handle('tz:task-window-open', () => { openTaskWindow(); return true; });
   ipcMain.handle('tz:task-snapshot', () => [...taskFeed.values()]);
+  ipcMain.handle('tz:task-paths', () => Object.fromEntries(taskPaths));
+  ipcMain.handle('tz:task-path-set', (_e, taskId: string, p: TaskPaths) => { taskPaths.set(taskId, p); return true; });
+
+  /* 文件夹浏览:目录读取 / 默认程序打开 / 移入回收站 / 新开浏览窗口 */
+  ipcMain.handle('tz:dir-list', wrap((dir: string): FolderEntry[] => {
+    const fmt = (st: fs.Stats) => {
+      const d = st.mtime;
+      const p2 = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    };
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e): FolderEntry[] => {
+      if (e.name.startsWith('~$')) return []; // Office 临时锁文件不展示
+      let st: fs.Stats;
+      try { st = fs.statSync(path.join(dir, e.name)); } catch { return []; }
+      const isDir = st.isDirectory();
+      const ext = path.extname(e.name).slice(1).toLowerCase();
+      return [{
+        name: e.name,
+        path: `${dir.replace(/\\/g, '/')}/${e.name}`,
+        isDir, size: isDir ? 0 : st.size, mtime: fmt(st),
+        isExe: !isDir && ['exe', 'msi', 'lnk', 'bat', 'cmd'].includes(ext),
+        isArchive: !isDir && isArchiveExt(ext),
+      }];
+    }).sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }) : a.isDir ? -1 : 1));
+  }));
+  ipcMain.handle('tz:open-path', wrap(async (p: string) => {
+    const err = await shell.openPath(p);
+    if (err) throw new EngineError('OPEN_FAILED', err);
+  }));
+  ipcMain.handle('tz:trash', wrap(async (paths: string[]) => {
+    for (const p of paths) await shell.trashItem(p); // 单项失败直接抛→渲染层 toast
+  }));
+  ipcMain.handle('tz:browse-window-open', (_e, dir: string) => { openBrowseWindow(dir); return true; });
   ipcMain.handle('tz:get-launch-payload', () => {
     const p = pendingPayload;
     pendingPayload = null;
