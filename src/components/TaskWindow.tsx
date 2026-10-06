@@ -113,9 +113,9 @@ export default function TaskWindow() {
           </span>
         )}
         <div className="app-nodrag ml-auto flex items-center">
-          <button className="inline-flex h-[38px] w-[40px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          <button className="inline-flex h-[38px] w-[40px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
             title="最小化" onClick={() => window.tz.winMinimize()}><IconMin className="size-3" /></button>
-          <button className="inline-flex h-[38px] w-[44px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          <button className="inline-flex h-[38px] w-[44px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
             title="最大化" onClick={() => window.tz.winMaximize()}><IconMax className="size-3" /></button>
           <button className="inline-flex h-[38px] w-[44px] items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
             title="关闭" onClick={() => window.tz.winClose()}><IconClose className="size-3" /></button>
@@ -160,7 +160,7 @@ export default function TaskWindow() {
         <div className="ml-auto flex items-center gap-2">
           <button
             className={cn('inline-flex h-[30px] min-w-[74px] items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-background px-3 text-[12px] transition-colors',
-              running.length ? 'text-foreground hover:bg-accent' : 'text-muted-foreground opacity-50',
+              running.length ? 'text-foreground hover:bg-accent active:bg-[var(--bg-active)]' : 'text-muted-foreground opacity-50',
               paused.has(running[0]?.taskId ?? '') && 'border-primary/50 text-primary')}
             title={paused.has(running[0]?.taskId ?? '') ? '恢复任务' : '暂停任务'}
             disabled={!running.length} onClick={() => void togglePause()}>
@@ -170,7 +170,7 @@ export default function TaskWindow() {
           <button
             className={cn('inline-flex h-[30px] min-w-[74px] items-center justify-center gap-1.5 rounded-lg border px-3 text-[12px] font-semibold transition-colors',
               running.length
-                ? 'border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20'
+                ? 'border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 active:bg-destructive/30'
                 : 'border-border/70 text-muted-foreground opacity-50')}
             title="停止全部任务" disabled={!running.length} onClick={stopAll}>
             <IconStop className="size-3" /> 停止
@@ -192,7 +192,7 @@ function FtBtn({ title, disabled, onClick, children }: {
   title: string; disabled?: boolean; onClick(e: React.MouseEvent): void; children: React.ReactNode;
 }) {
   return (
-    <button className="inline-flex size-[30px] items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+    <button className="inline-flex size-[30px] items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] disabled:pointer-events-none disabled:opacity-40"
       title={title} disabled={disabled} onClick={onClick}>{children}</button>
   );
 }

@@ -430,7 +430,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       <button
         onClick={() => { if (sortKey === k) setAsc(!asc); else { setSortKey(k); setAsc(k === 'name'); } }}
         className={cn(
-          'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground',
+          'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
           sortKey === k && 'font-semibold text-primary',
           /* 拖动中:被调列表头整块高亮(深一档品牌色底白字,比静止 primary 暗,反馈一目了然) */
           colDrag === k && 'bg-[var(--accent-hover)] text-primary-foreground hover:bg-[var(--accent-hover)] hover:text-primary-foreground',
@@ -576,8 +576,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         {treeMode === 'rail' ? (
           /* 36px 图标竖条:树展开钮 + 详细信息开关(激活染 primary),纵排居中 */
           <aside className="br-tree flex w-9 flex-none flex-col items-center gap-1 overflow-auto border-r border-border bg-secondary py-1.5">
-            <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[15px]" title="展开目录树" onClick={() => setTreeMode('full')}><IconTree /></button>
-            <button className={cn('grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[15px]', showDetails && 'text-primary hover:text-primary')}
+            <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[15px]" title="展开目录树" onClick={() => setTreeMode('full')}><IconTree /></button>
+            <button className={cn('grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[15px]', showDetails && 'text-primary hover:text-primary')}
               title={`${showDetails ? '隐藏' : '显示'}详细信息面板 (Alt+D)`} onClick={() => setShowDetails((v) => !v)}><IconPanel /></button>
           </aside>
         ) : (
@@ -591,8 +591,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
                   className={cn(
                     'bt-row flex h-7 flex-none cursor-pointer items-center gap-[5px] pr-2',
                     'rounded-md text-[12.5px] whitespace-nowrap text-muted-foreground transition-colors select-none outline-none',
-                    'hover:bg-accent hover:text-foreground focus:shadow-[inset_0_0_0_1.5px_var(--ring)]',
-                    prefix === node.path && 'on bg-primary/[.14] font-semibold text-primary shadow-[inset_0_0_0_1px_var(--ring)]',
+                    'hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] focus:shadow-[inset_0_0_0_1.5px_var(--ring)]',
+                    prefix === node.path && 'on bg-primary/[.14] font-semibold text-primary hover:bg-primary/[.14] active:bg-primary/20 shadow-[inset_0_0_0_1px_var(--ring)]',
                   )}
                   data-path={node.path}
                   tabIndex={-1}
@@ -672,7 +672,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
 
         {showDetails && (
           <aside className="detail-pane relative flex w-[clamp(232px,23vw,300px)] flex-none flex-col overflow-auto border-l border-border bg-secondary">
-            <button className="dp-close absolute right-2 top-2 z-[2] grid size-[26px] place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="关闭面板 (Alt+D)" onClick={() => setShowDetails(false)}><IconClose className="size-3" /></button>
+            <button className="dp-close absolute right-2 top-2 z-[2] grid size-[26px] place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]" title="关闭面板 (Alt+D)" onClick={() => setShowDetails(false)}><IconClose className="size-3" /></button>
             {detail ? (
               <>
                 <div className="dp-hero flex flex-col items-center gap-1.5 px-4 pb-3.5 pt-[26px] text-center">
@@ -752,7 +752,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
                   <div className="dp-row flex items-center justify-between gap-3 text-xs [&>span]:flex-none [&>span]:text-muted-foreground [&>b]:min-w-0 [&>b]:font-medium [&>b]:truncate">
                     <span>存储位置</span>
                     <b className="ellipsis" title={archive}>{parentDir(archive)}</b>
-                    <button className="dp-copy inline-flex size-[22px] flex-none items-center justify-center rounded-[5px] bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&_svg]:size-[12.5px]" title="复制存储位置" onClick={() => void copyPath(parentDir(archive))}><IconCopy /></button>
+                    <button className="dp-copy inline-flex size-[22px] flex-none items-center justify-center rounded-[5px] bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[12.5px]" title="复制存储位置" onClick={() => void copyPath(parentDir(archive))}><IconCopy /></button>
                   </div>
                 </div>
                 <div className={cn(
@@ -818,7 +818,7 @@ function DpAct({ icon, label, danger, onClick }: {
         'border border-border bg-transparent px-1 text-[11px] text-secondary-foreground transition-colors',
         'hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
         '[&>span]:max-w-full [&>span]:truncate [&_svg]:size-[15px]',
-        danger && 'danger text-destructive hover:bg-destructive/10 hover:text-destructive',
+        danger && 'danger text-destructive hover:bg-destructive/10 active:bg-destructive/20 hover:text-destructive',
       )}
       onClick={onClick}>
       {icon}<span>{label}</span>
@@ -841,7 +841,7 @@ function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMe
       className={cn(
         LIST_GRID,
         'row group h-8 cursor-default',
-        selected ? 'sel bg-primary/[.13] hover:bg-primary/[.13] shadow-[inset_0_0_0_1px_var(--ring)]' : 'hover:bg-accent',
+        selected ? 'sel bg-primary/[.13] hover:bg-primary/[.13] active:bg-primary/20 shadow-[inset_0_0_0_1px_var(--ring)]' : 'hover:bg-accent active:bg-[var(--bg-active)]',
       )}
       data-path={r.path}
       title={r.path}

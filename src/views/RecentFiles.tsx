@@ -53,7 +53,7 @@ export default function RecentFiles({ recents, onOpen, onRemoveRecent }: {
           {recents.map((p) => (
             <div key={p} className={cn(
               'group grid h-[42px] cursor-pointer grid-cols-[30px_minmax(0,1fr)_90px_34px] items-center gap-2.5',
-              'rounded-lg px-2.5 transition-colors hover:bg-accent',
+              'rounded-lg px-2.5 transition-colors hover:bg-accent active:bg-[var(--bg-active)]',
               !alive.has(p) && 'cursor-default opacity-50',
             )} title={p}
               onClick={() => alive.has(p) && onOpen(p)}

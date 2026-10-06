@@ -268,7 +268,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
       <button
         onClick={() => { if (sortKey === k) setAsc(!asc); else { setSortKey(k); setAsc(k === 'name'); } }}
         className={cn(
-          'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground',
+          'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
           sortKey === k && 'font-semibold text-primary',
           colDrag === k && 'bg-[var(--accent-hover)] text-primary-foreground hover:bg-[var(--accent-hover)] hover:text-primary-foreground',
         )}>
@@ -308,9 +308,9 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
           </span>
           <span className="min-w-0 truncate" title={cwd}>{folderName} - TongZip</span>
           <div className="app-nodrag ml-auto flex items-center">
-            <button className="inline-flex h-[38px] w-[40px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            <button className="inline-flex h-[38px] w-[40px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
               title="最小化" onClick={() => window.tz.winMinimize()}><IconMin className="size-3" /></button>
-            <button className="inline-flex h-[38px] w-[44px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            <button className="inline-flex h-[38px] w-[44px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
               title="最大化" onClick={() => window.tz.winMaximize()}><IconMax className="size-3" /></button>
             <button className="inline-flex h-[38px] w-[44px] items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
               title="关闭" onClick={() => window.tz.winClose()}><IconClose className="size-3" /></button>
@@ -390,7 +390,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
           )}
           {!err && rows.map((r) => (
             <div key={r.path}
-              className={cn(LIST_GRID, 'row group h-8 cursor-default', sel.has(r.path) ? 'sel bg-primary/[.13] hover:bg-primary/[.13] shadow-[inset_0_0_0_1px_var(--ring)]' : 'hover:bg-accent')}
+              className={cn(LIST_GRID, 'row group h-8 cursor-default', sel.has(r.path) ? 'sel bg-primary/[.13] hover:bg-primary/[.13] active:bg-primary/20 shadow-[inset_0_0_0_1px_var(--ring)]' : 'hover:bg-accent active:bg-[var(--bg-active)]')}
               data-path={r.path} title={r.name}
               onClick={(e) => clickRow(r, e)}
               onDoubleClick={() => openRow(r)}

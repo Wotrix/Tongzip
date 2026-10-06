@@ -119,7 +119,7 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
               <p className="px-3 py-1.5 text-[12.5px] text-muted-foreground">还没有记录 — 打开一个压缩包后会出现在这里。</p>
             ) : recents.slice(0, 5).map((p) => (
               <div key={p} className={cn(
-                'group flex h-11 cursor-pointer items-center gap-[11px] rounded-md px-3 transition-colors hover:bg-accent',
+                'group flex h-11 cursor-pointer items-center gap-[11px] rounded-md px-3 transition-colors hover:bg-accent active:bg-[var(--bg-active)]',
                 !alive.has(p) && 'opacity-50',
               )}
                 title={p} onClick={() => alive.has(p) && onOpen(p)}
@@ -190,7 +190,7 @@ function DoneTaskRow({ h }: { h: DoneJob }) {
   return (
     <div className={cn(
       'group flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
-      'transition-colors hover:bg-accent [&_svg]:size-[15px] [&_svg]:shrink-0',
+      'transition-colors hover:bg-accent active:bg-[var(--bg-active)] [&_svg]:size-[15px] [&_svg]:shrink-0',
       h.status !== 'done' && 'text-destructive',
     )} {...bind}>
       {menu}

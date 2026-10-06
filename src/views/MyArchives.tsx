@@ -69,7 +69,7 @@ export default function MyArchives({ onOpen, onNew }: {
             <span /><span>名称</span><span>大小</span><span>修改时间</span><span>位置</span><span />
           </div>
           {files.map((f) => (
-            <div key={f.path} className="grid h-[42px] cursor-pointer grid-cols-[30px_minmax(0,1fr)_90px_150px_minmax(0,1.4fr)_34px] items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-accent" title={f.path} onClick={() => onOpen(f.path)}
+            <div key={f.path} className="grid h-[42px] cursor-pointer grid-cols-[30px_minmax(0,1fr)_90px_150px_minmax(0,1.4fr)_34px] items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-accent active:bg-[var(--bg-active)]" title={f.path} onClick={() => onOpen(f.path)}
               onContextMenu={(e) => { e.preventDefault(); setRowMenu({ x: e.clientX, y: e.clientY, path: f.path }); }}>
               <FileGlyph name={f.name} isDir={false} size={22} />
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium">{f.name}</span>

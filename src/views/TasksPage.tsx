@@ -13,8 +13,8 @@ export default function TasksPage() {
 
   const tabCls = (on: boolean) => cn(
     'relative flex h-[34px] items-center gap-[7px] rounded-lg px-[11px] text-left text-[12.5px]',
-    'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-    on && 'bg-primary/[.12] font-semibold text-primary [&_em]:text-primary before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary',
+    'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
+    on && 'bg-primary/[.12] font-semibold text-primary hover:bg-primary/[.12] active:bg-primary/20 [&_em]:text-primary before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary',
   );
 
   return (

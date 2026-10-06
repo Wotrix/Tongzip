@@ -28,22 +28,22 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNew
             className={cn(
               'group/tab flex h-8 shrink-0 cursor-pointer items-center gap-1.5 select-none rounded-md pr-1.5 pl-2.5 text-xs',
               'max-w-[190px] transition-colors duration-150',
-              'text-muted-foreground hover:bg-accent hover:text-foreground',
-              t.id === activeId && 'border border-primary/35 bg-card font-semibold text-primary shadow-sm',
+              'text-muted-foreground hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
+              t.id === activeId && 'border border-primary/35 bg-card font-semibold text-primary shadow-sm hover:bg-card active:bg-primary/[.09]',
             )}
             title={t.archive || t.dir}
             onClick={() => onSelect(t.id)}
             onAuxClick={(e) => { if (e.button === 1) onClose(t.id); }}>
             {t.dir && <IconFolder className="size-[13px] shrink-0 text-primary" />}
             <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{basename(t.archive || t.dir || '')}</span>
-            <button className="grid size-[17px] shrink-0 place-items-center rounded-[4px] text-current opacity-0 transition-opacity duration-100 hover:bg-foreground/10 focus-visible:opacity-100 group-hover/tab:opacity-100" title="关闭标签 (Ctrl+W)"
+            <button className="grid size-[17px] shrink-0 place-items-center rounded-[4px] text-current opacity-0 transition-opacity duration-100 hover:bg-foreground/10 active:bg-foreground/20 focus-visible:opacity-100 group-hover/tab:opacity-100" title="关闭标签 (Ctrl+W)"
               onClick={(e) => { e.stopPropagation(); onClose(t.id); }}>
               <IconClose className="size-[11px]" />
             </button>
           </div>
         ))}
       </div>
-      <button className="grid size-[23px] shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="新建标签 (Ctrl+T)" onClick={(e) => {
+      <button className="grid size-[23px] shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]" title="新建标签 (Ctrl+T)" onClick={(e) => {
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
         setAddMenu({ x: r.left, y: r.bottom + 4 });
       }}>

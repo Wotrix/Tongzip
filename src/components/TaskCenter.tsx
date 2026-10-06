@@ -148,7 +148,7 @@ export function HistoryRow({ h }: { h: DoneJob }) {
   return (
     <div className={cn(
       'flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
-      'transition-colors hover:bg-accent [&_svg]:size-[15px] [&_svg]:shrink-0',
+      'transition-colors hover:bg-accent active:bg-[var(--bg-active)] [&_svg]:size-[15px] [&_svg]:shrink-0',
       h.status !== 'done' && 'text-destructive',
     )} {...bind}>
       {menu}

@@ -127,6 +127,12 @@ body {
    能正常覆盖;写在此处(无 layer)会永久压过 @layer utilities,破坏按钮迁移。 */
 button { cursor: pointer; }
 
+/* 按下反馈必须当帧生效:按住期间把颜色过渡归零(松开后 :active 移除,退去仍走原 120ms 平滑);
+   否则 15% 按下面被 transition 淡入,快速点击时看不见,观感变成「松手才变色」。
+   无 layer 声明压过 Tailwind utilities;用 :is 而非 :where,特异性需盖过后面
+   .icon-btn/.tbtn/.seg button 的 transition 简写(同为无 layer,后写者赢)。 */
+:is(button, [role='button'], [role='tab'], .row, .bt-row):active { transition-duration: 0ms; }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: content-box; border: 2px solid transparent; }
@@ -316,6 +322,7 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
   transition: background .12s, color .12s;
 }
 .seg button:hover { color: var(--ink); }
+.seg button:active:not(.on) { background: var(--bg-active); } /* 未选中块按下时也染色,点击不再空转 */
 .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(20, 26, 32, .18); } /* 选中块满品牌底白字:与 Switch/Checkbox 同语言 */
 
 .range { width: 100%; accent-color: var(--accent); }

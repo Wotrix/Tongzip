@@ -8,13 +8,13 @@ import { cn } from '@/lib/utils';
 /** 返回/前进/侧栏开关箭头:30px 方形 ghost 图标钮,.on 态用 accent 单点提示 */
 export const ARROW_CLS = cn(
   'inline-flex size-[30px] shrink-0 items-center justify-center rounded-md',
-  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
   'disabled:opacity-50 disabled:hover:bg-transparent',
 );
 /** 面包屑段落:悬停浅底、超宽省略(旧 .crumb) */
 export const CRUMB_CLS = cn(
   'block max-w-[260px] shrink-0 truncate rounded-md px-2 py-1 text-[13px]',
-  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+  'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
 );
 /** 工具栏按钮皮肤(旧 .tbtn:32px 高 / 12.5px 字 / 15px 图标),与 shadcn Button 尺寸类同层级覆盖 */
 export const TB_CLS = cn(

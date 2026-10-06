@@ -36,8 +36,8 @@ export default function TopBar({ archiveLabel = null }: { archiveLabel?: string 
           className={cn(
             'relative inline-flex size-[34px] items-center justify-center rounded-md',
             'text-muted-foreground transition-colors',
-            'hover:text-foreground hover:bg-accent active:bg-accent',
-            tcOpen && 'bg-primary/10 text-primary',
+            'hover:text-foreground hover:bg-accent active:bg-[var(--bg-active)]',
+            tcOpen && 'bg-primary/10 text-primary hover:bg-primary/10 active:bg-primary/20',
           )}
         >
           <BellGlyph running={running > 0} />
