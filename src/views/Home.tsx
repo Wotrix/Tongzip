@@ -4,8 +4,8 @@
 import { useEffect, useState } from 'react';
 import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn, IconReveal, IconCopy, IconDelete } from '../components/icons';
 import FileGlyph from '../components/FileGlyph';
-import { ContextMenu, useTaskHub, useToast } from '../components/ui';
-import { RunningCard } from '../components/TaskCenter';
+import { ContextMenu, useTaskHub, useToast, type DoneJob } from '../components/ui';
+import { RunningCard, useTaskMenu, revealArchive } from '../components/TaskCenter';
 import { basename, fmtBytes, parentDir } from '../lib/format';
 import { cn } from '@/lib/utils';
 
@@ -149,23 +149,7 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
             ) : (
               <>
                 {recentTasks.map((j) => <RunningCard key={j.taskId} job={j} />)}
-                {doneTasks.map((h) => (
-                  <div key={h.taskId + h.at} className={cn(
-                    'flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
-                    'transition-colors hover:bg-accent [&_svg]:size-[15px] [&_svg]:shrink-0',
-                    h.status !== 'done' && 'text-destructive',
-                  )}>
-                    {h.status === 'done'
-                      ? <IconCheckCircle className="text-primary" />
-                      : <IconWarn className="text-destructive" />}
-                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {h.kind === 'compress' ? '压缩' : h.kind === 'extract' ? '解压' : h.kind === 'test' ? '测试' : '删除'}
-                      {h.status === 'done' ? '完成' : h.status === 'error' ? '失败' : '已取消'}
-                      {h.label ? ` · ${h.label}` : ''}
-                    </span>
-                    <span className="shrink-0 text-[11.5px] text-muted-foreground">{new Date(h.at).toLocaleTimeString()}</span>
-                  </div>
-                ))}
+                {doneTasks.map((h) => <DoneTaskRow key={h.taskId + h.at} h={h} />)}
               </>
             )}
           </section>
@@ -195,6 +179,36 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
           ]} />
         );
       })()}
+    </div>
+  );
+}
+
+/** 最近任务的已完成行：右键菜单 + 悬停「打开文件位置」按钮(与最近打开板块对齐) */
+function DoneTaskRow({ h }: { h: DoneJob }) {
+  const toast = useToast();
+  const { menu, bind } = useTaskMenu(h.path);
+  return (
+    <div className={cn(
+      'group flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
+      'transition-colors hover:bg-accent [&_svg]:size-[15px] [&_svg]:shrink-0',
+      h.status !== 'done' && 'text-destructive',
+    )} {...bind}>
+      {menu}
+      {h.status === 'done'
+        ? <IconCheckCircle className="text-primary" />
+        : <IconWarn className="text-destructive" />}
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        {h.kind === 'compress' ? '压缩' : h.kind === 'extract' ? '解压' : h.kind === 'test' ? '测试' : '删除'}
+        {h.status === 'done' ? '完成' : h.status === 'error' ? '失败' : '已取消'}
+        {h.label ? ` · ${h.label}` : ''}
+      </span>
+      <span className="shrink-0 text-[11.5px] text-muted-foreground">{new Date(h.at).toLocaleTimeString()}</span>
+      {h.path && (
+        <button className="grid size-[24px] flex-none place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-[var(--bg-active)] hover:text-foreground group-hover:opacity-100" title="打开文件位置"
+          onClick={(e) => { e.stopPropagation(); revealArchive(h.path!, toast); }}>
+          <IconReveal className="size-[14px]" />
+        </button>
+      )}
     </div>
   );
 }

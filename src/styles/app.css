@@ -420,3 +420,13 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
 .spin { animation: spin 1s linear infinite; }
 .dz-folder { width: 26px; height: 26px; color: var(--fx-folder); margin: 0 auto 2px; display: block; }
 
+/* 任务窗口进度条:流光扫过(运行中) + 不确定进度滑块 */
+@keyframes tw-shimmer { to { background-position: 200% 0; } }
+.tw-shimmer {
+  background: linear-gradient(115deg, transparent 34%, rgba(255, 255, 255, .34) 50%, transparent 66%);
+  background-size: 200% 100%;
+  background-position: -200% 0;
+  animation: tw-shimmer 1.7s linear infinite;
+}
+@keyframes tw-indet { from { transform: translateX(0); } to { transform: translateX(380%); } }
+

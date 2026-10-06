@@ -3,13 +3,13 @@
  * 进行中:进度/速度/剩余时间/暂停·继续/取消;已完成:近期历史。
  * 暂停通过主进程挂起引擎子进程实现,进度会冻结在当前百分点。
  */
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import type { JobKind } from '@shared/types';
-import { useTaskHub, type DoneJob, type TrackedJob } from './ui';
+import { ContextMenu, useTaskHub, useToast, type DoneJob, type TrackedJob } from './ui';
 import { Button } from './ui/button';
 import {
   IconClose, IconCompress, IconDelete, IconExtract, IconTest,
-  IconCheckCircle, IconWarn, IconClock, IconPause, IconPlay,
+  IconCheckCircle, IconWarn, IconClock, IconPause, IconPlay, IconReveal,
 } from './icons';
 import { fmtBytes } from '../lib/format';
 import { cn } from '@/lib/utils';
@@ -50,9 +50,36 @@ function fmtAgo(at: number): string {
 }
 export { fmtAgo };
 
+/** 先验存在性再在资源管理器中定位;死链(已删除/移走)时降级为 toast 提醒 */
+export function revealArchive(path: string, toast: (text: string, kind?: 'ok' | 'err' | 'info') => void) {
+  void window.tz.exists(path).then((ok) => {
+    if (ok) void window.tz.revealInExplorer(path);
+    else toast('文件已不存在或被移除', 'err');
+  });
+}
+
+/** 任务卡右键菜单 hook:「打开文件位置」先验存在性再定位;菜单节点与 onContextMenu 绑定一起返回 */
+export function useTaskMenu(path?: string) {
+  const toast = useToast();
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  const menu = anchor && (
+    <ContextMenu x={anchor.x} y={anchor.y} onClose={() => setAnchor(null)} items={[
+      { label: '打开文件位置', icon: <IconReveal />, disabled: !path, onClick: () => { if (path) revealArchive(path, toast); } },
+    ]} />
+  );
+  const bind = {
+    onContextMenu: (e: MouseEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      setAnchor({ x: e.clientX, y: e.clientY });
+    },
+  };
+  return { menu, bind };
+}
+
 export function RunningCard({ job }: { job: TrackedJob }) {
   const meta = KIND_LABEL[job.kind];
   const Icon = meta.icon;
+  const { menu, bind } = useTaskMenu(job.path);
   const [paused, setPaused] = useState(false);
   const [busy, setBusy] = useState(false);
   const k = slope(job);
@@ -70,7 +97,8 @@ export function RunningCard({ job }: { job: TrackedJob }) {
     setBusy(false);
   };
   return (
-    <div className="rounded-lg px-2.5 pt-2.5 pb-[11px] transition-colors hover:bg-muted">
+    <div className="rounded-lg px-2.5 pt-2.5 pb-[11px] transition-colors hover:bg-muted" {...bind}>
+      {menu}
       <div className="flex items-center gap-2 text-[12.5px] font-semibold [&_svg]:size-[15px] [&_svg]:shrink-0">
         {done
           ? <IconCheckCircle className="text-primary" />
@@ -116,12 +144,14 @@ export function RunningCard({ job }: { job: TrackedJob }) {
 export function HistoryRow({ h }: { h: DoneJob }) {
   const meta = KIND_LABEL[h.kind];
   const Icon = h.status === 'done' ? IconCheckCircle : IconWarn;
+  const { menu, bind } = useTaskMenu(h.path);
   return (
     <div className={cn(
       'flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
       'transition-colors hover:bg-accent [&_svg]:size-[15px] [&_svg]:shrink-0',
       h.status !== 'done' && 'text-destructive',
-    )}>
+    )} {...bind}>
+      {menu}
       <Icon className={h.status === 'done' ? 'text-primary' : 'text-destructive'} />
       <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{h.label ? `${meta.done} · ${h.label}` : meta.done}</span>
       <span className="shrink-0 text-[11.5px] text-muted-foreground">{fmtAgo(h.at)}</span>

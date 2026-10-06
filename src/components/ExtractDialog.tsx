@@ -67,7 +67,7 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
           api.askPassword(archive, async (pw) => { await start(pw); return true; });
         } else toast(j.message ?? '解压失败', 'err');
       }
-    }, { label: basename(archive), totalBytes });
+    }, { label: basename(archive), path: archive, totalBytes });
   };
 
   return (

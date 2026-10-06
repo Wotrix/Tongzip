@@ -27,7 +27,7 @@ import { IconWarn } from './components/icons';
 import { basename, parentDir } from './lib/format';
 
 export interface AppApi {
-  trackTask(taskId: string, kind: JobKind, onSettled: (j: TrackedJob) => void, meta?: { label?: string; totalBytes?: number }): void;
+  trackTask(taskId: string, kind: JobKind, onSettled: (j: TrackedJob) => void, meta?: { label?: string; path?: string; totalBytes?: number }): void;
   askPassword(target: string, onOk: (pw: string) => Promise<boolean>): void;
   lastPassword(key: string): string | undefined;
   refreshArchive(): void;
@@ -218,7 +218,7 @@ function Shell() {
           api.askPassword(archive, async (p) => { await quickExtract(archive, intoSameDir, entries, p); return true; });
         } else toast(j.message ?? '解压失败', 'err');
       }
-    }, { label: basename(archive), totalBytes });
+    }, { label: basename(archive), path: archive, totalBytes });
   }, [hub, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- shell / 双击 启动指令 ---------- */
@@ -554,7 +554,7 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
       hub.track(r.data.taskId, 'test', (j) => {
         if (j.status === 'done') toast('压缩包完好。');
         else if (j.status === 'error') toast(j.message ?? '测试失败', 'err');
-      }, { label: basename(archive), totalBytes: info.physSize });
+      }, { label: basename(archive), path: archive, totalBytes: info.physSize });
     },
     onDelete: (entries: string[]) => {
       if (!entries.length) return;
@@ -567,7 +567,7 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
           hub.track(r.data.taskId, 'delete', async (j) => {
             if (j.status === 'done') { toast('已删除。'); await reload(); }
             else if (j.status === 'error') toast(j.message ?? '删除失败', 'err');
-          }, { label: basename(archive) });
+          }, { label: basename(archive), path: archive });
         },
       });
     },

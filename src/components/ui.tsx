@@ -76,6 +76,8 @@ export interface TrackedJob {
   message?: string;
   /** 展示名(压缩包/输出文件名) */
   label: string;
+  /** 压缩包完整路径(压缩=输出,解压/测试/删除=源包),供「打开文件位置」定位 */
+  path?: string;
   /** 换算速度用的总字节提示(如压缩包物理大小) */
   totalBytes?: number;
   startedAt: number;
@@ -88,6 +90,8 @@ export interface DoneJob {
   taskId: string;
   kind: JobKind;
   label: string;
+  /** 压缩包完整路径,同 TrackedJob.path */
+  path?: string;
   status: 'done' | 'error' | 'cancelled';
   message?: string;
   at: number;
@@ -96,7 +100,7 @@ export interface DoneJob {
 interface TaskHubValue {
   jobs: TrackedJob[];
   history: DoneJob[];
-  track(taskId: string, kind: JobKind, onSettled?: (j: TrackedJob) => void, meta?: { label?: string; totalBytes?: number }): void;
+  track(taskId: string, kind: JobKind, onSettled?: (j: TrackedJob) => void, meta?: { label?: string; path?: string; totalBytes?: number }): void;
   clearHistory(): void;
 }
 const TaskHubCtx = createContext<TaskHubValue>({ jobs: [], history: [], track: () => undefined, clearHistory: () => undefined });
@@ -109,7 +113,34 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
   const [jobs, setJobs] = useState<TrackedJob[]>([]);
   const [history, setHistory] = useState<DoneJob[]>([]);
   const settled = useRef(new Map<string, (j: TrackedJob) => void>());
-  const meta = useRef(new Map<string, { label?: string; totalBytes?: number }>());
+  const meta = useRef(new Map<string, { label?: string; path?: string; totalBytes?: number }>());
+  /* 终态事件比 track() 先到(快任务的竞态):暂存事件,track 注册 meta 后补处理,否则 label/path/回调全丢 */
+  const deferred = useRef(new Map<string, ProgressEvent>());
+
+  /** 终态统一处理:更新卡、回调、写历史、5s 后收起。只依赖 setState/ref,可被 effect 与 track 共用 */
+  const finalize = (ev: ProgressEvent) => {
+    setJobs((prev) => prev.map((j) => j.taskId === ev.taskId
+      ? { ...j, status: ev.status, message: ev.message ?? j.message, percent: ev.status === 'done' ? 100 : j.percent, updatedAt: Date.now() }
+      : j));
+    const m = meta.current.get(ev.taskId);
+    const j = { taskId: ev.taskId, kind: ev.kind, label: m?.label ?? '', path: m?.path };
+    settled.current.get(ev.taskId)?.({
+      ...j, percent: ev.percent, file: ev.file, status: ev.status, message: ev.message,
+      startedAt: 0, updatedAt: 0, samples: [],
+    });
+    settled.current.delete(ev.taskId);
+    setHistory((prev) => [{
+      ...j,
+      status: ev.status === 'running' ? 'done' : ev.status,
+      message: ev.message,
+      at: Date.now(),
+    }, ...prev].slice(0, 14));
+    // 终态任务卡片 5s 后从"进行中"列表收起(历史保留)
+    setTimeout(() => setJobs((prev) => prev.filter((x) => x.taskId !== ev.taskId)), 5000);
+    meta.current.delete(ev.taskId);
+  };
+  const finalizeRef = useRef(finalize);
+  finalizeRef.current = finalize;
 
   useEffect(() => {
     const off = window.tz.onProgress((ev) => {
@@ -120,7 +151,7 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
           const now = Date.now();
           const job: TrackedJob = {
             taskId: ev.taskId, kind: ev.kind, percent: ev.percent, file: ev.file, status: 'running',
-            label: m.label ?? ev.file ?? '', totalBytes: m.totalBytes,
+            label: m.label ?? ev.file ?? '', path: m.path, totalBytes: m.totalBytes,
             startedAt: i < 0 ? now : prev[i].startedAt, updatedAt: now,
             samples: i < 0 ? [{ t: now, p: Math.max(ev.percent, 0) }]
               : [...(prev[i].samples.at(-1)?.p !== ev.percent ? prev[i].samples : prev[i].samples.slice(0, -1)), { t: now, p: Math.max(ev.percent, 0) }].slice(-24),
@@ -130,40 +161,32 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
           next[i] = job;
           return next;
         });
+      } else if (!meta.current.has(ev.taskId) && !settled.current.has(ev.taskId)) {
+        // track() 尚未注册这个任务:暂存终态事件,等 track 里补账;2s 内没等到则照常收尾(防卡片永挂)
+        deferred.current.set(ev.taskId, ev);
+        setTimeout(() => {
+          if (deferred.current.get(ev.taskId) === ev) { deferred.current.delete(ev.taskId); finalizeRef.current(ev); }
+        }, 2000);
       } else {
-        setJobs((prev) => prev.map((j) => j.taskId === ev.taskId
-          ? { ...j, status: ev.status, message: ev.message ?? j.message, percent: ev.status === 'done' ? 100 : j.percent, updatedAt: Date.now() }
-          : j));
-        const j = { taskId: ev.taskId, kind: ev.kind, label: meta.current.get(ev.taskId)?.label ?? '' };
-        settled.current.get(ev.taskId)?.({
-          ...j, percent: ev.percent, file: ev.file, status: ev.status, message: ev.message,
-          startedAt: 0, updatedAt: 0, samples: [],
-        });
-        settled.current.delete(ev.taskId);
-        setHistory((prev) => [{
-          ...j,
-          status: ev.status === 'running' ? 'done' : ev.status,
-          message: ev.message,
-          at: Date.now(),
-        }, ...prev].slice(0, 14));
-        // 终态任务卡片 5s 后从"进行中"列表收起(历史保留)
-        setTimeout(() => setJobs((prev) => prev.filter((x) => x.taskId !== ev.taskId)), 5000);
-        meta.current.delete(ev.taskId);
+        finalizeRef.current(ev);
       }
     });
     return off;
   }, []);
 
   const track = useCallback<TaskHubValue['track']>((taskId, kind, onSettled, m) => {
-    meta.current.set(taskId, { label: m?.label, totalBytes: m?.totalBytes ?? undefined });
+    meta.current.set(taskId, { label: m?.label, path: m?.path, totalBytes: m?.totalBytes ?? undefined });
     if (onSettled) settled.current.set(taskId, onSettled);
     setJobs((prev) => prev.some((j) => j.taskId === taskId)
       ? prev
       : [...prev, {
         taskId, kind, percent: 0, file: '', status: 'running',
-        label: m?.label ?? '', totalBytes: m?.totalBytes,
+        label: m?.label ?? '', path: m?.path, totalBytes: m?.totalBytes,
         startedAt: Date.now(), updatedAt: Date.now(), samples: [{ t: Date.now(), p: 0 }],
       }]);
+    // 补账:终态事件先到的快任务,现在 meta/回调已就位,重新走一遍收尾
+    const d = deferred.current.get(taskId);
+    if (d) { deferred.current.delete(taskId); finalizeRef.current(d); }
   }, []);
 
   const clearHistory = useCallback(() => setHistory([]), []);

@@ -140,7 +140,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
     };
     const r = await window.tz.compress(job);
     if (!r.ok) { setBusy(false); toast(r.message, 'err'); return; }
-    // 压缩启动即弹独立任务窗口(已在跑的任务一并展示,终态后自动关)
+    // 压缩启动即弹独立任务窗口(已在跑的任务一并展示,终态后留存供回看,手动关闭)
     void window.tz.taskWindowOpen();
     // 任务中心展示总体积(大目录递归求和可能稍慢,不阻塞任务启动)
     void window.tz.totalSize(items).then((sz) => {
@@ -153,7 +153,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
         } else if (j.status === 'error') {
           toast(j.message ?? '压缩失败', 'err');
         }
-      }, { label: basename(output), totalBytes: sz.ok ? sz.data : undefined });
+      }, { label: basename(output), path: output, totalBytes: sz.ok ? sz.data : undefined });
     });
   };
 
