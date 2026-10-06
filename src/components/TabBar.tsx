@@ -29,7 +29,7 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNew
               'group/tab flex h-8 shrink-0 cursor-pointer items-center gap-1.5 select-none rounded-md pr-1.5 pl-2.5 text-xs',
               'max-w-[190px] transition-colors duration-150',
               'text-muted-foreground hover:bg-accent hover:text-foreground',
-              t.id === activeId && 'border border-border bg-card font-semibold text-primary shadow-sm',
+              t.id === activeId && 'border border-primary/35 bg-card font-semibold text-primary shadow-sm',
             )}
             title={t.archive || t.dir}
             onClick={() => onSelect(t.id)}

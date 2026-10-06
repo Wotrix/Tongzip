@@ -8,16 +8,16 @@
   --bg: #ffffff;            /* 主内容底 */
   --bg-chrome: #f7f6fb;     /* 标题栏/工具条/状态条等界面外围(紫调灰) */
   --bg-hover: #f2f0f9;      /* 行 hover */
-  --bg-active: #eae7f4;     /* 按下 */
+  --bg-active: color-mix(in srgb, var(--accent) 15%, #fff); /* 按下:比 hover(8%) 明显深一档,公式化跟随六色预设 */
   --panel: #ffffff;
   --floating: #ffffff;
 
   /* 品牌紫 #5A36DE — 改 --accent 一处,其余派生色自动跟随 */
   --accent: #5a36de;
   --accent-hover: color-mix(in srgb, var(--accent) 84%, #000);
-  --accent-soft: color-mix(in srgb, var(--accent) 9%, #fff);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, #fff);
   --accent-ink: #ffffff;
-  --bg-select: color-mix(in srgb, var(--accent) 10%, #fff);
+  --bg-select: color-mix(in srgb, var(--accent) 13%, #fff); /* 选中持久态:13% 底+--ring 内描边与 hover 区分 */
   --ring: color-mix(in srgb, var(--accent) 28%, transparent);
 
   /* 分隔与描边 */
@@ -72,7 +72,7 @@
   --bg: #1c1b22;
   --bg-chrome: #23222b;
   --bg-hover: #2c2a35;
-  --bg-active: #35333f;
+  --bg-active: color-mix(in srgb, var(--accent) 26%, #1c1b22);
   --panel: #1c1b22;
   --floating: #26242e;
   --line: #37353f;
@@ -83,9 +83,9 @@
   --ink-disabled: #5c5869;
   --accent: #7c5cf0;
   --accent-hover: color-mix(in srgb, var(--accent) 80%, #fff);
-  --accent-soft: color-mix(in srgb, var(--accent) 18%, #1c1b22);
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, #1c1b22);
   --accent-ink: #ffffff;
-  --bg-select: color-mix(in srgb, var(--accent) 22%, #1c1b22);
+  --bg-select: color-mix(in srgb, var(--accent) 24%, #1c1b22);
   --ring: color-mix(in srgb, var(--accent) 40%, transparent);
   --danger: #e07b6f;
   --danger-soft: #3a2622;
@@ -316,7 +316,7 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
   transition: background .12s, color .12s;
 }
 .seg button:hover { color: var(--ink); }
-.seg button.on { background: var(--bg); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(20, 26, 32, .12); }
+.seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(20, 26, 32, .18); } /* 选中块满品牌底白字:与 Switch/Checkbox 同语言 */
 
 .range { width: 100%; accent-color: var(--accent); }
 

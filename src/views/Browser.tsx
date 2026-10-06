@@ -432,7 +432,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         className={cn(
           'flex h-full w-full items-center rounded px-1.5 text-xs transition-colors hover:bg-accent hover:text-foreground',
           sortKey === k && 'font-semibold text-primary',
-          /* 拖动中:被调列表头整块高亮(深一档品牌蓝底白字,比静止 primary 暗,反馈一目了然) */
+          /* 拖动中:被调列表头整块高亮(深一档品牌色底白字,比静止 primary 暗,反馈一目了然) */
           colDrag === k && 'bg-[var(--accent-hover)] text-primary-foreground hover:bg-[var(--accent-hover)] hover:text-primary-foreground',
         )}>
         {label}{sortKey === k ? (asc ? ' ↑' : ' ↓') : ''}
@@ -592,7 +592,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
                     'bt-row flex h-7 flex-none cursor-pointer items-center gap-[5px] pr-2',
                     'rounded-md text-[12.5px] whitespace-nowrap text-muted-foreground transition-colors select-none outline-none',
                     'hover:bg-accent hover:text-foreground focus:shadow-[inset_0_0_0_1.5px_var(--ring)]',
-                    prefix === node.path && 'on bg-primary/10 font-semibold text-primary',
+                    prefix === node.path && 'on bg-primary/[.14] font-semibold text-primary shadow-[inset_0_0_0_1px_var(--ring)]',
                   )}
                   data-path={node.path}
                   tabIndex={-1}
@@ -841,7 +841,7 @@ function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMe
       className={cn(
         LIST_GRID,
         'row group h-8 cursor-default',
-        selected ? 'sel bg-primary/10 hover:bg-primary/10' : 'hover:bg-accent',
+        selected ? 'sel bg-primary/[.13] hover:bg-primary/[.13] shadow-[inset_0_0_0_1px_var(--ring)]' : 'hover:bg-accent',
       )}
       data-path={r.path}
       title={r.path}

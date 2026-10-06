@@ -96,7 +96,7 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
             className={cn(
               'flex h-8 items-center gap-2 rounded-lg px-2 text-left text-[13px]',
               'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-              view === v && 'bg-primary/10 font-semibold text-primary',
+              view === v && 'relative bg-primary/[.12] font-semibold text-primary before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary',
             )}>
             <Ico className="size-[17px] shrink-0" />
             <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
@@ -111,7 +111,7 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
           <button className={cn(
             'mt-1.5 flex h-8 items-center gap-2 rounded-lg border border-dashed border-border px-2 text-left text-xs',
             'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-            view === 'browse' && 'border-transparent bg-primary/10 font-semibold text-primary',
+            view === 'browse' && 'relative border-transparent bg-primary/[.12] font-semibold text-primary before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary',
           )} onClick={() => onNav('browse')} title={activeArchive}>
             <IconFolderOpen className="size-[17px] shrink-0" />
             <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{activeArchive}</span>

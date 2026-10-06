@@ -62,12 +62,13 @@ const GROUP_LABEL_CLS = 'text-xs font-semibold tracking-[.02em] text-muted-foreg
 const BODY_CLS = 'flex min-w-0 max-w-[560px] flex-col gap-[22px]';
 /** 纵向 Tabs 触发器:覆盖组件默认的「胶囊阴影 + dark 下 input 底色」,保持原柔和高亮 */
 const TAB_CLS = cn(
-  'h-[34px] w-full flex-none justify-start gap-[7px] rounded-lg px-[11px] py-0 text-left',
+  'h-[34px] w-full flex-none justify-start gap-[7px] rounded-lg px-[11px] py-0 text-left relative',
   'text-[12.5px] font-normal text-muted-foreground transition-colors',
   'hover:bg-accent hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground',
-  'data-[state=active]:bg-primary/10 data-[state=active]:font-semibold data-[state=active]:text-primary',
+  'data-[state=active]:bg-primary/[.12] data-[state=active]:font-semibold data-[state=active]:text-primary',
+  'data-[state=active]:before:absolute data-[state=active]:before:left-0 data-[state=active]:before:top-1/2 data-[state=active]:before:h-4 data-[state=active]:before:w-[3px] data-[state=active]:before:-translate-y-1/2 data-[state=active]:before:rounded-r-full data-[state=active]:before:bg-primary',
   'data-[state=active]:shadow-none! dark:data-[state=active]:border-transparent',
-  'dark:data-[state=active]:bg-primary/10 dark:data-[state=active]:text-primary',
+  'dark:data-[state=active]:bg-primary/[.12] dark:data-[state=active]:text-primary',
 );
 /** 主题预览迷你窗口:中性内容线 + 单点 accent 强调 */
 const PREV_BASE_CLS = 'relative block h-[88px] overflow-hidden rounded-[8px] border border-border';

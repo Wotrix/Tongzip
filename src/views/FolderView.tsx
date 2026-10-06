@@ -390,7 +390,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
           )}
           {!err && rows.map((r) => (
             <div key={r.path}
-              className={cn(LIST_GRID, 'row group h-8 cursor-default', sel.has(r.path) ? 'sel bg-primary/10 hover:bg-primary/10' : 'hover:bg-accent')}
+              className={cn(LIST_GRID, 'row group h-8 cursor-default', sel.has(r.path) ? 'sel bg-primary/[.13] hover:bg-primary/[.13] shadow-[inset_0_0_0_1px_var(--ring)]' : 'hover:bg-accent')}
               data-path={r.path} title={r.name}
               onClick={(e) => clickRow(r, e)}
               onDoubleClick={() => openRow(r)}
