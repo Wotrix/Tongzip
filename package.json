@@ -2,7 +2,7 @@
   "name": "tongzip",
   "productName": "TongZip",
   "version": "1.0.0",
-  "description": "TongZip — 现代跨平台压缩文件管理器",
+  "description": "TongZip",
   "main": "dist-electron/main.js",
   "private": true,
   "scripts": {
@@ -57,10 +57,10 @@
       "dist/**/*",
       "dist-electron/**/*"
     ],
-    "extraResources": {
-      "from": "engine",
-      "to": "engine"
-    },
+    "extraResources": [
+      { "from": "engine", "to": "engine" },
+      { "from": "build/archive.ico", "to": "archive.ico" }
+    ],
     "win": {
       "target": [
         "portable",

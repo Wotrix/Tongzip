@@ -4,9 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   detectEngine, listArchive, runCompress, runExtract, runTest, inferFormat,
-  totalSize, previewEntry, pauseTask, cancelTask,
+  totalSize, previewEntry, pauseTask, cancelTask, extractConflicts,
 } from '../electron/engine';
 import type { CompressJob } from '../shared/types';
+import { ERR } from '../shared/types';
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) { console.error('FAIL:', msg); process.exit(1); }
@@ -103,6 +104,44 @@ function assert(cond: unknown, msg: string): asserts cond {
   assert(cancelTask(bJob.taskId) === true, 'cancelTask 取消成功');
   for (let i = 0; i < 160 && !bcancel && !bdone; i++) await new Promise((r) => setTimeout(r, 50));
   assert(bcancel && !bdone, `取消后收到 cancelled 终态事件 (bdone=${bdone})`);
+
+  // ── 安全回归:S2 zip-slip — 恶意 renames 键(../../x)不得让重命名逃出解压目标目录 ──
+  const slipVictim = path.join(root, 'slip-victim.txt');
+  fs.writeFileSync(slipVictim, 'must-not-touch');
+  const out2 = path.join(root, 'out2');
+  let sdone = false; let serr = '';
+  await runExtract({
+    archive: out7z, dest: out2, overwrite: 'overwrite',
+    renames: { '../slip-victim.txt': 'hacked.txt', 'data/../../slip-victim.txt': 'hacked2.txt', 'data/a.txt': 'z.txt' },
+  }, (ev) => { if (ev.status === 'done') sdone = true; if (ev.status === 'error') serr = ev.message ?? ''; });
+  for (let i = 0; i < 100 && !sdone && !serr; i++) await new Promise((r) => setTimeout(r, 50));
+  assert(sdone, `带恶意 renames 键的解压任务正常完成不中断 (${serr})`);
+  assert(fs.existsSync(slipVictim) && fs.readFileSync(slipVictim, 'utf8') === 'must-not-touch', 'zip-slip: 目录外文件未被逃逸重命名');
+  assert(!fs.existsSync(path.join(root, 'hacked.txt')) && !fs.existsSync(path.join(root, 'hacked2.txt')), 'zip-slip: 逃逸目标名未落在目录外');
+  assert(fs.existsSync(path.join(out2, 'data', 'z.txt')), '合法 renames 仍正常生效');
+
+  // ── 功能回归:U1 ask 预检 — 目标已有同名文件时必须报冲突而非静默覆盖 ──
+  const conflicts = await extractConflicts({ archive: out7z, dest: out2, entries: [], overwrite: 'ask' });
+  assert(conflicts.length > 0 && conflicts.some((c) => c.endsWith('z.txt') || c.endsWith('b.txt')), `extractConflicts 命中已存在文件 count=${conflicts.length}`);
+  const fresh = await extractConflicts({ archive: out7z, dest: path.join(root, 'never-exists'), entries: [], overwrite: 'ask' });
+  assert(fresh.length === 0, 'extractConflicts 空目标目录无冲突');
+
+  // ── 回归:Q1 机读错误码 — 加密包无密码解压,终态事件须带 ERR.NEED_PASSWORD(不依赖文案) ──
+  const outEnc = path.join(root, 'enc.7z');
+  let encDone = false; let encErr = '';
+  await runCompress(
+    { sources: [src], output: outEnc, format: '7z', level: 1, dict: '16m', solid: 'auto', multiThread: false, password: 'tz-pw-42' },
+    (ev) => { if (ev.status === 'done') encDone = true; if (ev.status === 'error') encErr = ev.message ?? ''; },
+  );
+  for (let i = 0; i < 100 && !encDone && !encErr; i++) await new Promise((r) => setTimeout(r, 50));
+  assert(encDone && fs.existsSync(outEnc), `加密 7z 压缩成功 (${encErr})`);
+  let xCode = ''; let xMsg = '';
+  await runExtract({ archive: outEnc, dest: path.join(root, 'outEnc'), overwrite: 'overwrite' }, (ev) => {
+    if (ev.status === 'error') { xCode = ev.code ?? ''; xMsg = ev.message ?? ''; }
+  });
+  for (let i = 0; i < 100 && !xCode && !xMsg; i++) await new Promise((r) => setTimeout(r, 50));
+  assert(xCode === ERR.NEED_PASSWORD, `无密码解压加密包→code=NEED_PASSWORD (code=${xCode} msg=${xMsg})`);
+  assert(xMsg !== 'NEED_PASSWORD', '错误事件 message 为人可读文案而非裸码');
 
   fs.rmSync(root, { recursive: true, force: true });
   console.log('\nALL PASSED');
