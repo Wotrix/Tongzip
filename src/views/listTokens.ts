@@ -33,6 +33,13 @@ export type AnyColKey = ColKey | 'name';
 /** 每列拖动范围 [下限, 上限];时间列下限要容得下完整时间戳 */
 export const COL_LIMITS: Record<ColKey, [number, number]> = { type: [72, 320], size: [72, 320], time: [110, 320] };
 export const NAME_RANGE: [number, number] = [120, 600];
+/** 可隐藏的辅助列(名称列恒显,是定位锚点不可收起);拖到下限即收起,表头「更多」菜单恢复 */
+export const HIDEABLE_COLS: { key: ColKey; label: string }[] = [
+  { key: 'type', label: '类型' },
+  { key: 'size', label: '大小' },
+  { key: 'time', label: '修改时间' },
+];
+export const isHiddenCol = (hidden: Set<ColKey>, k: AnyColKey) => k !== 'name' && hidden.has(k);
 export const clampCol = (k: ColKey, w: number) => Math.min(COL_LIMITS[k][1], Math.max(COL_LIMITS[k][0], Math.round(w) || COL_DEFAULTS[k]));
 export const clampName = (w: number) => Math.min(NAME_RANGE[1], Math.max(NAME_RANGE[0], Math.round(w) || 200));
 
@@ -70,4 +77,11 @@ export async function loadColWidths(setCols: (fn: (p: Partial<Record<ColKey, num
     time: typeof c.time === 'number' ? clampCol('time', c.time) : p.time,
     name: typeof c.name === 'number' ? clampName(c.name) : undefined,
   }));
+}
+
+/** 隐藏列设置(hiddenColumns)读取:过滤到合法 ColKey(名称列不在其中,天然不可隐藏) */
+export async function loadHiddenCols(): Promise<ColKey[]> {
+  const s = await window.tz.getSettings();
+  const valid = new Set<ColKey>(['type', 'size', 'time']);
+  return (s.hiddenColumns ?? []).filter((k): k is ColKey => valid.has(k as ColKey));
 }

@@ -100,6 +100,8 @@ export default function SettingsPage() {
 
   if (!s) return null;
   const patch = (p: Partial<Settings>) => {
+    /* 广播给 Shell:rememberPassword/dblClickAction 等开关需实时生效,不等重挂载 */
+    window.dispatchEvent(new CustomEvent('tz:settings-patched', { detail: p }));
     void window.tz.setSettings(p).then((v) => {
       setS(v);
       if (p.accent) {
@@ -135,6 +137,13 @@ export default function SettingsPage() {
     const r = await window.tz.openDefaultApps();
     if (!r.ok) toast(r.message, 'err');
     else toast('在「默认应用」页选中 TongZip,再将压缩包扩展名指定为它');
+  };
+
+  /** 一键设为默认:先把 TongZip 登记进系统可选应用,再跳到默认应用页供用户确认 */
+  const setAsDefault = async () => {
+    const r = await window.tz.setDefaultApp();
+    if (!r.ok) { toast(r.message, 'err'); return; }
+    toast('已登记 TongZip,在弹出的「默认应用」页把压缩包格式选为它即可');
   };
 
   return (
@@ -269,12 +278,12 @@ export default function SettingsPage() {
           <div className={GROUP_CLS}>
             <div className={GROUP_LABEL_CLS}>默认应用</div>
             <div className="note mb-2">
-              Windows 限制第三方应用不能静默改默认关联。打开系统设置后选中 TongZip,
-              把 .7z/.zip 等压缩包指定为它,双击即可直接浏览。
-              下方「加入打开方式」开关会先把 TongZip 注册进可选列表。
+              Windows 限制第三方应用不能静默改默认关联。点「设为默认」会把 TongZip 登记进系统可选应用
+              并打开设置页,把 .7z/.zip 等压缩包选为它,之后双击即可直接浏览。
             </div>
-            <div>
-              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={() => void openDefaultApps()}>打开系统「默认应用」设置</Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" className="h-[27px] px-[11px] text-xs" onClick={() => void setAsDefault()}>设为默认压缩包程序</Button>
+              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={() => void openDefaultApps()}>仅打开系统设置</Button>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 /**
- * 基础 UI 层:Modal、Toast、任务中枢(TaskHub)、右键菜单
+ * 基础 UI 层:Modal、Toast、任务中枢(TaskHub)、右键菜单、可拖面板手柄
  * 任务中心浮层不在此渲染 — 由 TitleBar/TaskCenter 消费 hub。
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -74,6 +74,8 @@ export interface TrackedJob {
   file: string;
   status: ProgressEvent['status'];
   message?: string;
+  /** 机读错误码(ERR.*),供 UI 精确判断 NEED_PASSWORD 等场景,不依赖文案 */
+  code?: string;
   /** 展示名(压缩包/输出文件名) */
   label: string;
   /** 压缩包完整路径(压缩=输出,解压/测试/删除=源包),供「打开文件位置」定位 */
@@ -94,6 +96,8 @@ export interface DoneJob {
   path?: string;
   status: 'done' | 'error' | 'cancelled';
   message?: string;
+  /** 机读错误码,同 TrackedJob.code */
+  code?: string;
   at: number;
 }
 
@@ -120,12 +124,12 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
   /** 终态统一处理:更新卡、回调、写历史、5s 后收起。只依赖 setState/ref,可被 effect 与 track 共用 */
   const finalize = (ev: ProgressEvent) => {
     setJobs((prev) => prev.map((j) => j.taskId === ev.taskId
-      ? { ...j, status: ev.status, message: ev.message ?? j.message, percent: ev.status === 'done' ? 100 : j.percent, updatedAt: Date.now() }
+      ? { ...j, status: ev.status, message: ev.message ?? j.message, code: ev.code ?? j.code, percent: ev.status === 'done' ? 100 : j.percent, updatedAt: Date.now() }
       : j));
     const m = meta.current.get(ev.taskId);
     const j = { taskId: ev.taskId, kind: ev.kind, label: m?.label ?? '', path: m?.path };
     settled.current.get(ev.taskId)?.({
-      ...j, percent: ev.percent, file: ev.file, status: ev.status, message: ev.message,
+      ...j, percent: ev.percent, file: ev.file, status: ev.status, message: ev.message, code: ev.code,
       startedAt: 0, updatedAt: 0, samples: [],
     });
     settled.current.delete(ev.taskId);
@@ -133,6 +137,7 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
       ...j,
       status: ev.status === 'running' ? 'done' : ev.status,
       message: ev.message,
+      code: ev.code,
       at: Date.now(),
     }, ...prev].slice(0, 14));
     // 终态任务卡片 5s 后从"进行中"列表收起(历史保留)
@@ -247,5 +252,66 @@ export function ContextMenu({ x, y, items, onClose }: {
           </button>
         ))}
     </div>
+  );
+}
+
+/* ---------------- 可拖面板手柄 ---------------- */
+
+/**
+ * 拖宽手势:监听挂在 window 而非手柄元素——收起↔展开分支切换会替换手柄 DOM,
+ * 元素级 setPointerCapture 会随手柄卸载丢手势(表现为“拖不动”);
+ * 拖动中每帧回写本地 dragW(宽度实时跟手),松手才 commit 交给上层持久化。
+ * min 取收起阈值以下的地板(如竖条 36),是否收起由 commit 自己判断。
+ */
+export function usePanelDrag(opt: { min: number; max: number; base: () => number; commit: (w: number) => void }) {
+  const ref = useRef(opt);
+  ref.current = opt; // 始终读最新闭包,监听器无需随 props 变化重建
+  const [dragW, setDragW] = useState<number | null>(null);
+  const start = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const base0 = ref.current.base();
+    const at = (cx: number) => {
+      const { min, max } = ref.current;
+      return Math.min(max, Math.max(min, Math.round(base0 + cx - startX) || min));
+    };
+    const move = (ev: PointerEvent) => setDragW(at(ev.clientX));
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      setDragW(null);
+      ref.current.commit(at(ev.clientX));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    setDragW(at(e.clientX));
+  };
+  return { dragW, start };
+}
+
+/**
+ * 面板右缘拖宽手柄:12px 命中区(够宽才瞄得准)
+ * 中间常驻可见短把手(“拖拽栏”,随时提示这里能拖),hover/拖动染品牌色;
+ * 另补一条仅 hover/拖动时出现的通长高亮线,避开与面板自身 border-r 叠成双线。live=拖动中。
+ */
+export function PanelHandle({ onPointerDown, onDoubleClick, live, title }: {
+  onPointerDown: (e: React.PointerEvent) => void;
+  onDoubleClick?: () => void;
+  live?: boolean;
+  title?: string;
+}) {
+  return (
+    <span aria-hidden
+      title={title ?? '拖拽调整宽度(拖到最小可收起) · 双击恢复默认'}
+      onPointerDown={onPointerDown}
+      onDoubleClick={onDoubleClick}
+      className="panel-handle group absolute inset-y-0 right-0 z-20 w-[12px] cursor-col-resize touch-none">
+      <i className={cn('pointer-events-none absolute inset-y-0 right-0 w-[3px] rounded-full transition-opacity duration-100',
+        live ? 'bg-primary/70 opacity-100' : 'bg-primary/40 opacity-0 group-hover:opacity-100')} />
+      <i className={cn('pointer-events-none absolute right-[1px] top-1/2 h-9 w-[3px] -translate-y-1/2 rounded-full transition-colors duration-100',
+        live ? 'bg-primary' : 'bg-muted-foreground/35 group-hover:bg-primary/70')} />
+    </span>
   );
 }

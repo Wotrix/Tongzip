@@ -12,7 +12,7 @@ import {
   IconClose, IconReveal, IconTest, IconPanel, IconTree, IconSidebar,
 } from '../components/icons';
 import FileGlyph, { EntryGlyph } from '../components/FileGlyph';
-import { ContextMenu, useToast, type CtxItem } from '../components/ui';
+import { ContextMenu, PanelHandle, usePanelDrag, useToast, type CtxItem } from '../components/ui';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '@/lib/utils';
@@ -20,8 +20,9 @@ import { fmtBytes, fmtRatio, basename, parentDir, FORMAT_LABEL } from '../lib/fo
 
 /* ---------- T11/T13 版式令牌:与 FolderView 共享单一真相(listTokens) ---------- */
 import {
-  ARROW_CLS, CRUMB_CLS, TB_CLS, TB_OUTLINE_CLS, COL_DEFAULTS, clampCol, clampName,
-  measure, CELL_FONT, HEAD_FONT, LIST_GRID, CK_CLS, loadColWidths,
+  ARROW_CLS, CRUMB_CLS, TB_CLS, TB_OUTLINE_CLS, COL_DEFAULTS, clampCol, clampName, COL_LIMITS,
+  measure, CELL_FONT, HEAD_FONT, LIST_GRID, CK_CLS, loadColWidths, loadHiddenCols, HIDEABLE_COLS,
+  isHiddenCol,
   type ColKey, type AnyColKey,
 } from './listTokens';
 
@@ -60,6 +61,14 @@ export interface BrowserActions {
 
 type SortKey = 'name' | 'type' | 'size' | 'time';
 
+/* 目录树可拖宽度:默认/双击复位 160(取下限档),自由拖到 TREE_MAX(旧 400 太局促);
+   松手低于 TREE_COLLAPSE 即收起为竖条;从竖条往回拖过 TREE_PULL_BACK 实时预览完整面板 */
+const TREE_DEFAULT = 160;
+const TREE_COLLAPSE = 120;
+const TREE_MAX = 560;
+const TREE_RAIL_W = 36;
+const TREE_PULL_BACK = 96;
+
 export default function Browser({ info, archive, query, onSearch, actions, nav, sidebarHidden }: {
   info: ArchiveInfo;
   archive: string;
@@ -94,19 +103,31 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   /* 可拖列宽:CSS 变量挂在滚动容器上作单一真相;未拖过的列 = 内容自适应宽(autoW),松手才写设置 */
   const [cols, setCols] = useState<Partial<Record<ColKey, number>> & { name?: number }>({});
   const [colDrag, setColDrag] = useState<AnyColKey | null>(null);
-  /* 目录树面板宽度:可拖 160–400,默认/双击回 160(尽量小),持久化 treeWidth */
-  const [treeW, setTreeW] = useState(160);
-  const [treeDrag, setTreeDrag] = useState(false);
+  /* 被拖到下限而隐藏的辅助列(名称列恒显);表头「更多」菜单可恢复 */
+  const [hidden, setHidden] = useState<Set<ColKey>>(new Set());
+  /* 目录树面板宽度:自由拖 TREE_COLLAPSE–TREE_MAX,默认/双击回 160(尽量小),持久化 treeWidth */
+  const [treeW, setTreeW] = useState(TREE_DEFAULT);
   useEffect(() => {
     void (async () => {
       const s = await window.tz.getSettings();
-      if (typeof s.treeWidth === 'number') setTreeW(Math.min(400, Math.max(160, Math.round(s.treeWidth)) || 160));
+      if (typeof s.treeWidth === 'number') setTreeW(Math.min(TREE_MAX, Math.max(TREE_COLLAPSE, Math.round(s.treeWidth)) || TREE_DEFAULT));
       await loadColWidths(setCols);
+      setHidden(new Set(await loadHiddenCols()));
     })();
   }, []);
   const commitCols = (next: typeof cols) => {
     setCols(next);
     void window.tz.setSettings({ listColumnWidths: next });
+  };
+  /* 隐藏/恢复辅助列:写回 hiddenColumns(单一持久化真相),两视图互见 */
+  const setHiddenCols = (next: Set<ColKey>) => {
+    setHidden(next);
+    void window.tz.setSettings({ hiddenColumns: [...next] });
+  };
+  const toggleCol = (k: ColKey) => {
+    const next = new Set(hidden);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    setHiddenCols(next);
   };
   const startColDrag = (k: AnyColKey, e: React.PointerEvent) => {
     e.preventDefault();
@@ -122,6 +143,11 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
       setColDrag(null);
+      /* 拖到最小不弹回原形:向左拖至列宽下限即把该列收起(名称列除外),从表头「更多」恢复 */
+      if (k !== 'name' && ev.clientX < startX && base + ev.clientX - startX <= COL_LIMITS[k][0]) {
+        toggleCol(k);
+        return;
+      }
       commitCols({ ...cols, [k]: at(ev) });
     };
     setColDrag(k);
@@ -130,28 +156,28 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     el.addEventListener('pointercancel', up);
   };
 
-  /* 目录树右缘拖宽:与列手柄同一套 capture 模式,松手才持久化 */
-  const startTreeDrag = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
-    const startX = e.clientX;
-    const base = treeW;
-    const clampT = (w: number) => Math.min(400, Math.max(160, Math.round(w) || 160));
-    const at = (ev: PointerEvent) => clampT(base + ev.clientX - startX);
-    const move = (ev: PointerEvent) => setTreeW(at(ev));
-    const up = (ev: PointerEvent) => {
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', up);
-      setTreeDrag(false);
-      void window.tz.setSettings({ treeWidth: at(ev) });
-    };
-    setTreeDrag(true);
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-  };
+  /* 目录树右缘拖宽(window 级手势 + 本地实时宽,见 usePanelDrag):拖程中宽度实时跟手,
+     松手才持久化;拖到最小(<TREE_COLLAPSE)不弹回,收起为 36px 竖条;
+     从竖条往回拖也能实时预览面板宽度(手柄元素会随分支切换被替换,因而不适用元素级 capture) */
+  const treeFromRail = useRef(false);
+  const { dragW: treeDragW, start: startTreeDrag } = usePanelDrag({
+    min: TREE_RAIL_W,
+    max: TREE_MAX,
+    base: () => (treeFromRail.current ? TREE_RAIL_W : treeW),
+    commit: (w) => {
+      treeFromRail.current = false;
+      if (w < TREE_COLLAPSE) { setTreeMode('rail'); return; } // 不落地非法宽,展开时回到原宽
+      const nu = Math.min(TREE_MAX, Math.max(TREE_COLLAPSE, Math.round(w) || TREE_COLLAPSE));
+      setTreeW(nu);
+      void window.tz.setSettings({ treeWidth: nu });
+      setTreeMode('full');
+    },
+  });
+  const treeDragging = treeDragW !== null;
+  const treeShown = treeDragW ?? treeW;
+  /* 收起态且还没拖过预览门槛:只显示竖条;否则显示面板(可能正是从竖条拖出的实时预览) */
+  const showTreeRail = treeMode === 'rail' && (!treeDragging || treeShown < TREE_PULL_BACK);
+  const startTreeDragFromRail = (e: React.PointerEvent) => { treeFromRail.current = true; startTreeDrag(e); };
 
   /* 搜索时清空选中 */
   useEffect(() => { setSel(new Set()); }, [query]);
@@ -515,6 +541,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     { label: treeMode === 'full' ? '收起目录树' : '展开目录树', icon: <IconTree />, onClick: () => setTreeMode((m) => (m === 'full' ? 'rail' : 'full')) },
     { label: showDetails ? '隐藏详细信息面板' : '显示详细信息面板', kbd: 'Alt+D', icon: <IconPanel />, onClick: () => setShowDetails((v) => !v) },
     { label: sidebarHidden ? '显示侧边栏' : '隐藏侧边栏', kbd: 'Alt+B', icon: <IconSidebar />, onClick: actions.onToggleSidebar },
+    { sep: true, label: '' },
+    /* 列显示/隐藏开关:拖到最小收起的列从这里恢复 */
+    ...HIDEABLE_COLS.map((c) => ({ label: hidden.has(c.key) ? `显示${c.label}列` : `隐藏${c.label}列`, onClick: () => toggleCol(c.key) })),
     { label: '在资源管理器中显示', icon: <IconReveal />, onClick: actions.onReveal },
   ];
 
@@ -578,16 +607,18 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
 
       {/* 目录树 + 文件列表 + 详情面板 */}
       <div className="flex min-h-0 flex-1">
-        {treeMode === 'rail' ? (
-          /* 36px 图标竖条:树展开钮 + 详细信息开关(激活染 primary),纵排居中 */
-          <aside className="br-tree flex w-9 flex-none flex-col items-center gap-1 overflow-auto border-r border-border bg-secondary py-1.5">
+        {showTreeRail ? (
+          /* 36px 图标竖条:树展开钮 + 详细信息开关(激活染 primary),纵排居中;右缘手柄可拖回完整树(实时预览宽度) */
+          <aside className="br-tree relative flex w-9 flex-none flex-col items-center gap-1 overflow-auto border-r border-border bg-secondary py-1.5">
             <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[15px]" title="展开目录树" onClick={() => setTreeMode('full')}><IconTree /></button>
             <button className={cn('grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[15px]', showDetails && 'text-primary hover:text-primary')}
               title={`${showDetails ? '隐藏' : '显示'}详细信息面板 (Alt+D)`} onClick={() => setShowDetails((v) => !v)}><IconPanel /></button>
+            <PanelHandle title="拖拽唤回目录树 · 双击展开" onPointerDown={startTreeDragFromRail}
+              onDoubleClick={() => setTreeMode('full')} live={treeDragging} />
           </aside>
         ) : (
           /* 目录树面板:外层 div 控宽(手柄骑右缘,不受内层滚动影响);bt-row / on = 键盘导航与自动滚动的 querySelector 钩子,不承载样式 */
-          <div className={cn('relative flex-none', treeDrag && 'select-none')} style={{ width: treeW }}>
+          <div className={cn('relative flex-none', treeDragging && 'select-none')} style={{ width: treeShown }}>
           <aside className="br-tree h-full w-full overflow-auto border-r border-border bg-secondary p-1.5 pb-3.5 outline-none" ref={treeRef} tabIndex={0} aria-label="压缩包目录树" onKeyDown={onTreeKey}>
             {visibleRows.map(({ node, depth }) => {
               const open = depth === 0 || expanded.has(node.path);
@@ -617,18 +648,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               );
             })}
           </aside>
-          {/* 右缘拖宽手柄:与侧栏/列手柄同款交互;双击回默认 160(取下限) */}
-          <span
-            aria-hidden
-            title="拖拽调整目录树宽度 · 双击恢复默认"
-            onPointerDown={startTreeDrag}
-            onDoubleClick={() => { setTreeW(160); void window.tz.setSettings({ treeWidth: 160 }); }}
-            className={cn(
-              'absolute inset-y-0 right-0 z-20 w-[9px] cursor-col-resize touch-none',
-              'after:absolute after:inset-y-2 after:right-0 after:w-[2px] after:rounded-full after:bg-transparent',
-              'after:transition-colors hover:after:bg-primary/40', treeDrag && 'after:bg-primary/60',
-            )}
-          />
+          {/* 右缘拖宽手柄:常驻可见把手 + 12px 命中区(与侧栏/列手柄同源实现);双击回默认 160(取下限档) */}
+          <PanelHandle onPointerDown={startTreeDrag} live={treeDragging}
+            onDoubleClick={() => { setTreeW(TREE_DEFAULT); void window.tz.setSettings({ treeWidth: TREE_DEFAULT }); }} />
           </div>
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -636,7 +658,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
               list-head/entry-list/row/ck-box 类名保留作 CDP 探针对选择器钩子,不承载样式 */}
           <div
             className={cn('entry-list min-h-0 flex-1 overflow-auto pb-5', colDrag && 'select-none')}
-            style={{ '--col-name': `${colW('name')}px`, '--col-type': `${colW('type')}px`, '--col-size': `${colW('size')}px`, '--col-time': `${colW('time')}px` } as React.CSSProperties}
+            style={{ '--col-name': `${colW('name')}px`, '--col-type': isHiddenCol(hidden, 'type') ? '0px' : `${colW('type')}px`, '--col-size': isHiddenCol(hidden, 'size') ? '0px' : `${colW('size')}px`, '--col-time': isHiddenCol(hidden, 'time') ? '0px' : `${colW('time')}px` } as React.CSSProperties}
             onContextMenu={(e) => onContextMenu(e, null)}
           >
             <div className={cn(LIST_GRID, 'list-head sticky top-0 z-[1] h-8 border-b border-border bg-background text-xs text-muted-foreground')}>
@@ -644,9 +666,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
                 <input type="checkbox" checked={allChecked} readOnly className={CK_CLS} />
               </label>
               {sortHead('name', '名称')}
-              {sortHead('type', '类型')}
-              {sortHead('size', '大小')}
-              {sortHead('time', '修改时间')}
+              {isHiddenCol(hidden, 'type') ? <span aria-hidden /> : sortHead('type', '类型')}
+              {isHiddenCol(hidden, 'size') ? <span aria-hidden /> : sortHead('size', '大小')}
+              {isHiddenCol(hidden, 'time') ? <span aria-hidden /> : sortHead('time', '修改时间')}
               <span aria-hidden />
             </div>
             {rows.length === 0 && (
@@ -654,7 +676,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
             )}
             {rows.map((r) => (
               <Row
-                key={r.path} r={r} selected={sel.has(r.path)}
+                key={r.path} r={r} selected={sel.has(r.path)} hidden={hidden}
                 onCheck={() => toggleOne(r.path)}
                 onMouseDown={() => { dragging.current = false; }}
                 onClick={(e) => clickRow(r, e)}
@@ -832,8 +854,8 @@ function DpAct({ icon, label, danger, onClick }: {
   );
 }
 
-function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMenu, onDragStart, onDragEnd }: {
-  r: ArchiveEntry; selected: boolean;
+function Row({ r, selected, hidden, onCheck, onMouseDown, onClick, onDouble, onContextMenu, onDragStart, onDragEnd }: {
+  r: ArchiveEntry; selected: boolean; hidden: Set<ColKey>;
   onCheck(): void;
   onMouseDown(e: React.MouseEvent): void;
   onClick(e: React.MouseEvent): void;
@@ -866,11 +888,11 @@ function Row({ r, selected, onCheck, onMouseDown, onClick, onDouble, onContextMe
         <EntryGlyph entry={r} size={18} />
         <span className="truncate" title={r.path}>{r.name}</span>
       </div>
-      <div className="type truncate px-1.5 text-[12.5px] tabular-nums text-muted-foreground">{typeLabel(r)}</div>
-      <div className="size truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground" title={r.packed ? `压缩后 ${fmtBytes(r.packed)}` : undefined}>
+      {isHiddenCol(hidden, 'type') ? <span aria-hidden /> : <div className="type truncate px-1.5 text-[12.5px] tabular-nums text-muted-foreground">{typeLabel(r)}</div>}
+      {isHiddenCol(hidden, 'size') ? <span aria-hidden /> : <div className="size truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground" title={r.packed ? `压缩后 ${fmtBytes(r.packed)}` : undefined}>
         {r.isDir ? '' : fmtBytes(r.size)}
-      </div>
-      <div className="time truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>
+      </div>}
+      {isHiddenCol(hidden, 'time') ? <span aria-hidden /> : <div className="time truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>}
       <span aria-hidden />
     </div>
   );

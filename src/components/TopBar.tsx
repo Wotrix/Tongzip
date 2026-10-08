@@ -6,7 +6,8 @@
  */
 import { useState } from 'react';
 import TaskCenter from './TaskCenter';
-import { IconMin, IconMax, IconClose, IconBell, Logo } from './icons';
+import { IconMin, IconMax, IconClose, IconBell } from './icons';
+import AppLogo from './AppLogo';
 import { useTaskHub } from './ui';
 import { cn } from '@/lib/utils';
 
@@ -21,9 +22,7 @@ export default function TopBar({ archiveLabel = null }: { archiveLabel?: string 
       <div className="flex min-w-0 flex-1 items-center">
         {archiveLabel && (
           <span className="flex min-w-0 items-center gap-2 pl-1.5 text-[12.5px]">
-            <span className="flex size-[19px] shrink-0 items-center justify-center rounded-[5px] bg-primary text-primary-foreground">
-              <Logo className="size-[12px]" />
-            </span>
+            <AppLogo className="size-[22px]" />
             <span className="truncate font-semibold text-foreground" title={archiveLabel}>{archiveLabel}</span>
             <span className="shrink-0 text-muted-foreground">- TongZip</span>
           </span>

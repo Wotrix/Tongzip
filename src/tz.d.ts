@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
-  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, FolderEntry,
+  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
   IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState,
 } from '@shared/types';
 
@@ -12,7 +12,7 @@ declare global {
       listArchive(archive: string, password?: string): Promise<IpcResult<ArchiveInfo>>;
       scanArchives(): Promise<IpcResult<ArchiveFile[]>>;
       compress(job: CompressJob): Promise<IpcResult<{ taskId: string }>>;
-      extract(job: ExtractJob): Promise<IpcResult<{ taskId: string }>>;
+      extract(job: ExtractJob): Promise<IpcResult<ExtractStart>>;
       test(archive: string, password?: string): Promise<IpcResult<{ taskId: string }>>;
       deleteEntries(archive: string, entries: string[]): Promise<IpcResult<{ taskId: string }>>;
       renameArchive(archive: string, newName: string): Promise<IpcResult<{ newPath: string }>>;
@@ -34,9 +34,12 @@ declare global {
       shellUninstall(): Promise<IpcResult<void>>;
       shellRefresh(): Promise<IpcResult<void>>;
       openDefaultApps(): Promise<IpcResult<void>>;
+      setDefaultApp(): Promise<IpcResult<void>>;
       winMinimize(): void;
       winMaximize(): void;
       winClose(): void;
+      /** 切换本窗口置顶,回传切换后的状态 */
+      winPin(): Promise<boolean>;
       taskWindowOpen(): Promise<boolean>;
       taskSnapshot(): Promise<ProgressEvent[]>;
       taskPaths(): Promise<Record<string, { archive?: string; output?: string; dest?: string }>>;

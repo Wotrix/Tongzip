@@ -6,17 +6,18 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, nativeImage, shell, Menu } from 'electron';
 import { exec } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type {
-  ArchiveFile, CompressJob, ExtractJob, FolderEntry, IpcResult, LaunchPayload, ProgressEvent, Settings,
+  ArchiveFile, CompressJob, ExtractJob, ExtractStart, FolderEntry, IpcResult, LaunchPayload, ProgressEvent, Settings,
 } from '../shared/types';
-import { isArchiveExt } from '../shared/types';
+import { ERR, isArchiveExt } from '../shared/types';
 import {
-  EngineError, cancelTask, defaultOutputFor, detectEngine, extractSingleToTemp, inferFormat,
+  EngineError, cancelTask, defaultOutputFor, detectEngine, extractConflicts, extractSingleToTemp, inferFormat,
   isArchivePath, listArchive, pauseTask, previewEntry, quickExtractDest, runCompress, runDelete,
   runExtract, runTest, totalSize,
 } from './engine';
-import { installShell, shellStatus, uninstallShell } from './shell';
+import { installShell, registerDefaultAppCapabilities, shellStatus, uninstallShell } from './shell';
 
 /* ------------------------------------------------------------------ */
 /* 常量与状态                                                          */
@@ -30,7 +31,7 @@ let win: BrowserWindow | null = null;
 let taskWin: BrowserWindow | null = null;
 /** 任务快照:taskId → 最新进度事件(任务窗口晚开时回放进行中任务;终态延迟清除) */
 const taskFeed = new Map<string, ProgressEvent>();
-/** 任务路径登记:taskId → 源包/输出/解压目标(任务窗「打开位置」与解压完成自动开窗的数据源) */
+/** 任务路径登记:taskId → 源包/输出/解压目标(任务窗「打开位置」双钮的数据源) */
 interface TaskPaths { archive?: string; output?: string; dest?: string }
 const taskPaths = new Map<string, TaskPaths>();
 let pendingPayload: LaunchPayload | null = null;
@@ -53,27 +54,43 @@ const DEFAULTS: Settings = {
   showRecentOpen: true,
   showRecentTasks: true,
   sidebarWidth: 156,
+  sidebarCollapsed: false,
   treeWidth: 160,
   listColumnWidths: {},
+  hiddenColumns: [],
 };
+/** 设置存储:内存缓存 + 去抖落盘。此前 raw 每键重读文件、settings-set 逐键同步写,
+ * 一次 patch 多个键会反复读写的磁盘;改为首次加载后常驻内存,变更后 150ms 合写一次 */
 const settingsFile = () => path.join(app.getPath('userData'), 'tongzip-settings.json');
+let settingsCache: Settings | null = null;
+let settingsWriteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushSettings(): void {
+  if (settingsWriteTimer) { clearTimeout(settingsWriteTimer); settingsWriteTimer = null; }
+  if (!settingsCache) return;
+  try {
+    fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
+    fs.writeFileSync(settingsFile(), JSON.stringify(settingsCache, null, 2), 'utf8');
+  } catch { /* 写入失败不阻断运行 */ }
+}
+
 const store = {
   get raw(): Settings {
-    try {
-      return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) } as Settings;
-    } catch {
-      return { ...DEFAULTS };
+    if (!settingsCache) {
+      try {
+        settingsCache = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) } as Settings;
+      } catch {
+        settingsCache = { ...DEFAULTS };
+      }
     }
+    return settingsCache;
   },
   get(key: keyof Settings): Settings[keyof Settings] {
     return store.raw[key];
   },
   set(key: keyof Settings, value: unknown): void {
-    const next = { ...store.raw, [key]: value };
-    try {
-      fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-      fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2), 'utf8');
-    } catch { /* 写入失败不阻断运行 */ }
+    settingsCache = { ...store.raw, [key]: value };
+    if (!settingsWriteTimer) settingsWriteTimer = setTimeout(flushSettings, 150);
   },
 };
 
@@ -171,7 +188,7 @@ function createWindow(): BrowserWindow {
   return w;
 }
 
-/** 独立文件夹浏览窗口(Bandizip 解压完成式:新窗直达目标目录) */
+/** 独立文件夹浏览窗口(浏览视图右键「在新窗口浏览」手动调用;解压不再自动弹此窗) */
 function openBrowseWindow(dir: string): void {
   const q = encodeURIComponent(dir);
   const w = new BrowserWindow({
@@ -199,14 +216,33 @@ function openBrowseWindow(dir: string): void {
   }
 }
 
+/* 进度事件节流合帧:7za 大 archive 每秒可输出数十行日志,逐行×逐窗广播会打满 IPC;
+ * 运行中事件每 100ms 转发一次(同任务仅保留最新帧),终态立即送达;广播剔除 log 字段(渲染层无消费者) */
+const feedPending = new Map<string, ProgressEvent>();
+let feedTimer: ReturnType<typeof setTimeout> | null = null;
+
+function pushFeed(): void {
+  feedTimer = null;
+  const events = [...feedPending.values()];
+  feedPending.clear();
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue;
+    for (const ev of events) w.webContents.send('tz:progress', { ...ev, log: undefined });
+  }
+}
+
 function send(ev: ProgressEvent): void {
   /* 快照维护:任务窗口打开瞬间靠它回放已在跑的任务;终态 6s 后清理 */
   taskFeed.set(ev.taskId, ev);
   if (ev.status !== 'running') setTimeout(() => taskFeed.delete(ev.taskId), 6000);
-  /* 广播到所有窗口(主窗铃铛/任务中心 + 独立任务窗口) */
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send('tz:progress', ev);
+  feedPending.set(ev.taskId, ev);
+  if (ev.status !== 'running') {
+    /* 终态:先清定时器并把合帧中的最新状态一并发出,不等下一拍 */
+    if (feedTimer) { clearTimeout(feedTimer); feedTimer = null; }
+    pushFeed();
+    return;
   }
+  if (!feedTimer) feedTimer = setTimeout(pushFeed, 100);
 }
 
 /** 打开/唤回独立任务窗口(frameless 小窗,同 bundle 加 ?window=task 分流渲染) */
@@ -303,42 +339,51 @@ async function scanArchives(): Promise<ArchiveFile[]> {
   return out.sort((a, b) => b.mtime.localeCompare(a.mtime));
 }
 
+/** 跳到 Windows「设置 ▸ 默认应用」并定位 TongZip 条目;ms-settings 不可用时用 start 兜底 */
+async function openDefaultAppsSettings(): Promise<void> {
+  const uris = ['ms-settings:defaultapps?registeredAppUser=TongZip', 'ms-settings:defaultapps'];
+  for (const uri of uris) {
+    try { await shell.openExternal(uri); return; } catch { /* 尝试下一级 */ }
+  }
+  await new Promise<void>((resolve, reject) => {
+    exec(`start "" "${uris[0]}"`, (e) => (e ? reject(e) : resolve()));
+  });
+}
+
 function installIpc(): void {
   ipcMain.handle('tz:engine-detect', wrap(() => detectEngine(store.get('enginePath') as string | null)));
   ipcMain.handle('tz:archive-list', wrap((a: { archive: string; password?: string }) => listArchive(a.archive, a.password)));
   ipcMain.handle('tz:compress', wrap(async (job: CompressJob) => {
-    if (!job.output) throw new EngineError('NO_OUTPUT', '缺少输出路径。');
+    if (!job.output) throw new EngineError(ERR.NO_OUTPUT, '缺少输出路径。');
     const r = runCompress(job, send);
     /* taskId 由引擎内部先生成后同步登记:runCompress 同步阶段即 tasks.set,invoke 返回时已可查 */
     return r;
   }));
-  ipcMain.handle('tz:extract', wrap(async (job: ExtractJob) => {
-    /* 解压完成自动新开浏览窗口直达目标目录(Bandizip 式默认行为):
-       包名与目标文件夹同名 = 解进了新建同名文件夹,展示其父级才能看到新文件夹 */
-    const wrapSend: (ev: ProgressEvent) => void = (ev) => {
-      if (ev.status === 'done' && ev.kind === 'extract') {
-        const dest = job.dest.replace(/\\/g, '/').replace(/\/+$/, '');
-        const stem = path.basename(job.archive).replace(/\.[^.]+$/, '');
-        const shown = path.basename(dest).toLowerCase() === stem.toLowerCase() ? path.dirname(dest) : dest;
-        openBrowseWindow(shown);
-      }
-      send(ev);
-    };
-    return runExtract(job, wrapSend);
+  ipcMain.handle('tz:extract', wrap(async (job: ExtractJob): Promise<ExtractStart> => {
+    /* 询问模式预检:目标已有同名文件时不启动任务,返回冲突清单由渲染层让用户决策(否则等于静默覆盖) */
+    if (job.overwrite === 'ask') {
+      const conflicts = await extractConflicts(job);
+      if (conflicts.length) return { conflicts };
+    }
+    /* 解压与压缩保持一致:启动即弹出独立任务窗口展示进度,终态留存供回看;
+       不再自动新开文件夹浏览窗口(目标目录由用户在任务窗「打开目标文件夹」自行查看) */
+    const r = await runExtract(job, send);
+    openTaskWindow();
+    return r;
   }));
   ipcMain.handle('tz:test', wrap((a: { archive: string; password?: string }) => runTest(a.archive, a.password, send)));
   ipcMain.handle('tz:delete-entries', wrap((a: { archive: string; entries: string[] }) => runDelete(a.archive, a.entries, send)));
   /* 重命名磁盘上的压缩包文件:保留原扩展名,校验合法名与目标冲突,成功后返回新路径 */
   ipcMain.handle('tz:archive-rename', wrap(({ archive, newName }: { archive: string; newName: string }) => {
     const name = newName.trim();
-    if (!name || /[\\/:*?"<>|]/.test(name) || name === '.' || name === '..') throw new EngineError('BAD_NAME', '文件名不能包含 \\ / : * ? " < > |。');
+    if (!name || /[\\/:*?"<>|]/.test(name) || name === '.' || name === '..') throw new EngineError(ERR.BAD_NAME, '文件名不能包含 \\ / : * ? " < > |。');
     const dir = path.dirname(archive);
     const ext = path.extname(archive);
     const finalName = ext && name.toLowerCase().endsWith(ext.toLowerCase()) ? name : `${name}${ext}`;
     const newPath = path.join(dir, finalName);
-    if (path.basename(newPath).toLowerCase() !== finalName) throw new EngineError('BAD_NAME', '不允许修改压缩包扩展名。');
+    if (path.basename(newPath).toLowerCase() !== finalName) throw new EngineError(ERR.BAD_NAME, '不允许修改压缩包扩展名。');
     if (path.normalize(archive).toLowerCase() === path.normalize(newPath).toLowerCase()) return { newPath: archive };
-    if (fs.existsSync(newPath)) throw new EngineError('EXISTS', `同名文件已存在:${finalName}`);
+    if (fs.existsSync(newPath)) throw new EngineError(ERR.EXISTS, `同名文件已存在:${finalName}`);
     fs.renameSync(archive, newPath);
     return { newPath };
   }));
@@ -377,7 +422,13 @@ function installIpc(): void {
   });
 
   ipcMain.handle('tz:reveal', wrap(async (p: string) => { shell.showItemInFolder(p); }));
-  ipcMain.handle('tz:open-external', wrap(async (url: string) => { await shell.openExternal(url); }));
+  ipcMain.handle('tz:open-external', wrap(async (url: string) => {
+    /* 协议白名单:防止经由 file: 等处理器启动本地程序;本地文件打开走 tz:open-path */
+    let proto = '';
+    try { proto = new URL(url).protocol; } catch { throw new EngineError(ERR.BAD_URL, '无效的链接地址。'); }
+    if (proto !== 'https:' && proto !== 'http:') throw new EngineError(ERR.BAD_URL, '仅允许打开 http/https 链接。');
+    await shell.openExternal(url);
+  }));
 
   ipcMain.handle('tz:settings-get', () => store.raw);
   ipcMain.handle('tz:settings-set', (_e, patch: Partial<Settings>) => {
@@ -401,14 +452,15 @@ function installIpc(): void {
 
   /* 打开 Windows「设置 ▸ 默认应用」(TongZip 条目优先,失败逐级降级) */
   ipcMain.handle('tz:open-default-apps', wrap(async () => {
-    const uris = ['ms-settings:defaultapps?registeredAppUser=TongZip', 'ms-settings:defaultapps'];
-    for (const uri of uris) {
-      try { await shell.openExternal(uri); return; } catch { /* 尝试下一级 */ }
-    }
-    // 极少数环境 ms-settings 不可用:用 start 兜底再试一次
-    await new Promise<void>((resolve, reject) => {
-      exec(`start "" "${uris[0]}"`, (e) => (e ? reject(e) : resolve()));
-    });
+    await openDefaultAppsSettings();
+  }));
+
+  /* 设为默认:先把 TongZip 登记进可选应用(写 Capabilities + RegisteredApplications),
+   * 再跳到系统默认应用页,用户点一下即可把压缩包格式关联过来。
+   * Windows 不允许第三方静默改 UserChoice,故只能「登记 + 引导」两步。 */
+  ipcMain.handle('tz:shell-set-default', wrap(async () => {
+    await registerDefaultAppCapabilities();
+    await openDefaultAppsSettings();
   }));
 
   /* 窗控按 sender 定位各自窗口:主窗/任务窗口互不误伤 */
@@ -421,6 +473,13 @@ function installIpc(): void {
   ipcMain.handle('tz:win-close', (e) => {
     /* 按 sender 关各自窗口:任务窗口的关闭钮不应误关主窗 */
     BrowserWindow.fromWebContents(e.sender)?.close();
+  });
+  /* 置顶开关:任务窗标题栏图钉钮,切换 alwaysOnTop 并回读窗口真实状态供渲染层高亮 */
+  ipcMain.handle('tz:win-pin', (e) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (!w) return false;
+    w.setAlwaysOnTop(!w.isAlwaysOnTop(), 'floating');
+    return w.isAlwaysOnTop();
   });
   /* 任务窗口:打开/唤回 + 进行中任务快照(晚开的窗口回放)+ 路径登记(打开位置) */
   ipcMain.handle('tz:task-window-open', () => { openTaskWindow(); return true; });
@@ -452,7 +511,7 @@ function installIpc(): void {
   }));
   ipcMain.handle('tz:open-path', wrap(async (p: string) => {
     const err = await shell.openPath(p);
-    if (err) throw new EngineError('OPEN_FAILED', err);
+    if (err) throw new EngineError(ERR.OPEN_FAILED, err);
   }));
   ipcMain.handle('tz:trash', wrap(async (paths: string[]) => {
     for (const p of paths) await shell.trashItem(p); // 单项失败直接抛→渲染层 toast
@@ -474,6 +533,21 @@ function installIpc(): void {
 /* 生命周期                                                            */
 /* ------------------------------------------------------------------ */
 
+/* 清理陈旧临时提取目录(>24h):双击打开/拖拽导出的副产物此前只增不删,
+ * 挂起脚本(也写入同目录)意外残留同样被回收;占用中的条目 rmSync 会失败,跳过即可 */
+function gcTempDir(): void {
+  const dir = path.join(os.tmpdir(), 'TongZip');
+  let names: string[];
+  try { names = fs.readdirSync(dir); } catch { return; }
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  for (const n of names) {
+    const p = path.join(dir, n);
+    try {
+      if (fs.statSync(p).mtimeMs < cutoff) fs.rmSync(p, { recursive: true, force: true, maxRetries: 1 });
+    } catch { /* 无权限/正占用:下次启动再试 */ }
+  }
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -483,6 +557,9 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
+    /* Windows 任务栏按 AppUserModelID 决定图标/分组:不设则回落 electron.exe 默认标(黑环绿点),
+     * 我们的窗口 icon.png 再大也不显示。给一个稳定 ID 后,任务栏按钮才用 TongZip 图标。 */
+    if (isWin) app.setAppUserModelId('com.tongzip.app');
     const theme = store.get('theme') as Settings['theme'];
     nativeTheme.themeSource = theme === 'auto' ? 'system' : theme;
     installIpc();
@@ -492,6 +569,8 @@ if (!app.requestSingleInstanceLock()) {
     deliverPayload(parseArgv(process.argv));
     // 引擎预热(失败不阻塞 UI,渲染层会引导用户处理)
     void detectEngine(store.get('enginePath') as string | null).catch(() => undefined);
+    // 临时目录回收放在首帧之后,不拖慢启动
+    setTimeout(gcTempDir, 3000);
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) win = createWindow();
@@ -501,4 +580,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => {
     if (!isWin || process.platform !== 'darwin') app.quit();
   });
+
+  /* 退出去掉去抖窗口期,确保最后一笔设置落盘 */
+  app.on('will-quit', () => flushSettings());
 }

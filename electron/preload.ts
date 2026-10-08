@@ -3,7 +3,7 @@
  */
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
-  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, FolderEntry,
+  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
   IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState,
 } from '../shared/types';
 
@@ -19,7 +19,7 @@ const api = {
   scanArchives: (): Promise<IpcResult<ArchiveFile[]>> => ipcRenderer.invoke('tz:scan-archives'),
   compress: (job: CompressJob): Promise<IpcResult<{ taskId: string }>> =>
     ipcRenderer.invoke('tz:compress', job),
-  extract: (job: ExtractJob): Promise<IpcResult<{ taskId: string }>> =>
+  extract: (job: ExtractJob): Promise<IpcResult<ExtractStart>> =>
     ipcRenderer.invoke('tz:extract', job),
   test: (archive: string, password?: string): Promise<IpcResult<{ taskId: string }>> =>
     ipcRenderer.invoke('tz:test', { archive, password }),
@@ -58,11 +58,14 @@ const api = {
   shellUninstall: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:shell-uninstall'),
   shellRefresh: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:shell-refresh'),
   openDefaultApps: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:open-default-apps'),
+  setDefaultApp: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:shell-set-default'),
 
   /* 窗口 */
   winMinimize: () => ipcRenderer.invoke('tz:win-minimize'),
   winMaximize: () => ipcRenderer.invoke('tz:win-maximize'),
   winClose: () => ipcRenderer.invoke('tz:win-close'),
+  /** 切换本窗口置顶,回读切换后的真实状态 */
+  winPin: (): Promise<boolean> => ipcRenderer.invoke('tz:win-pin'),
 
   /* 任务窗口:压缩启动时打开/唤回;晚开窗口用快照回放进行中任务 */
   taskWindowOpen: (): Promise<boolean> => ipcRenderer.invoke('tz:task-window-open'),
