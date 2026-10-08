@@ -5,3 +5,10 @@ release/
 .tmp/
 _ref_nanazip/
 *.log
+
+# 一次性 CDP 回归探针与取证截图(仅本地保留,不入库)
+tzm*.mjs
+tzm*.png
+tzm*.txt
+_nav.mjs
+shot_full.png
