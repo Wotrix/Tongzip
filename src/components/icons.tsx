@@ -4,7 +4,7 @@ import {
   Archive, Bell, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Code, Copy,
   Eye, ExternalLink, File, FileText, Folder, FolderDown, FolderOpen, FolderTree, FolderUp,
   Home, Image, ListChecks, Lock, Minus, Monitor, Moon, MoreHorizontal, OctagonX, PanelLeft, PanelRight,
-  Pause, Pencil, Play, Plus, RefreshCw, Search, Settings, Shrink, SlidersHorizontal, Square, Sun,
+  Pause, Pencil, Pin, PinOff, Play, Plus, RefreshCw, Search, Settings, Shrink, SlidersHorizontal, Square, Sun,
   Trash2, TriangleAlert, LoaderCircle, X,
   type LucideIcon,
 } from 'lucide-react';
@@ -113,5 +113,9 @@ export const IconCode = mk(Code);
 export const IconImage = mk(Image);
 /** 停止任务(Bandizip 式红叉钮) */
 export const IconStop = mk(OctagonX);
+/** 窗口置顶(图钉) */
+export const IconPin = mk(Pin);
+/** 取消置顶 */
+export const IconPinOff = mk(PinOff);
 /** 刷新目录 */
 export const IconRefresh = mk(RefreshCw);

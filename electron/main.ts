@@ -36,7 +36,7 @@ let win: BrowserWindow | null = null;
 let taskWin: BrowserWindow | null = null;
 /** 任务快照:taskId → 最新进度事件(任务窗口晚开时回放进行中任务;终态延迟清除) */
 const taskFeed = new Map<string, ProgressEvent>();
-/** 任务路径登记:taskId → 源包/输出/解压目标(任务窗「打开位置」与解压完成自动开窗的数据源) */
+/** 任务路径登记:taskId → 源包/输出/解压目标(任务窗「打开位置」双钮的数据源) */
 interface TaskPaths { archive?: string; output?: string; dest?: string }
 const taskPaths = new Map<string, TaskPaths>();
 let pendingPayload: LaunchPayload | null = null;
@@ -193,7 +193,7 @@ function createWindow(): BrowserWindow {
   return w;
 }
 
-/** 独立文件夹浏览窗口(Bandizip 解压完成式:新窗直达目标目录) */
+/** 独立文件夹浏览窗口(浏览视图右键「在新窗口浏览」手动调用;解压不再自动弹此窗) */
 function openBrowseWindow(dir: string): void {
   const q = encodeURIComponent(dir);
   const w = new BrowserWindow({
@@ -543,6 +543,13 @@ function installIpc(): void {
   ipcMain.handle('tz:win-close', (e) => {
     /* 按 sender 关各自窗口:任务窗口的关闭钮不应误关主窗 */
     BrowserWindow.fromWebContents(e.sender)?.close();
+  });
+  /* 置顶开关:任务窗标题栏图钉钮,切换 alwaysOnTop 并回读窗口真实状态供渲染层高亮 */
+  ipcMain.handle('tz:win-pin', (e) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (!w) return false;
+    w.setAlwaysOnTop(!w.isAlwaysOnTop(), 'floating');
+    return w.isAlwaysOnTop();
   });
   /* 任务窗口:打开/唤回 + 进行中任务快照(晚开的窗口回放)+ 路径登记(打开位置) */
   ipcMain.handle('tz:task-window-open', () => { openTaskWindow(); return true; });

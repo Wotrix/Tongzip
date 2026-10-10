@@ -14,7 +14,7 @@ import RecentFiles from './views/RecentFiles';
 import MyArchives from './views/MyArchives';
 import TasksPage from './views/TasksPage';
 import SettingsPage from './views/SettingsPage';
-import Sidebar, { type View } from './components/Sidebar';
+import Sidebar, { SB_DEFAULT, SB_MAX, SB_MIN, type View } from './components/Sidebar';
 import TabBar from './components/TabBar';
 import TopBar from './components/TopBar';
 import CompressDialog from './components/CompressDialog';
@@ -112,7 +112,7 @@ function Shell() {
     void window.tz.setSettings({ sidebarCollapsed: false });
   }, []);
   const resizeSidebar = useCallback((w: number) => {
-    const nu = Math.min(260, Math.max(156, Math.round(w) || 156));
+    const nu = Math.min(SB_MAX, Math.max(SB_MIN, Math.round(w) || SB_MIN));
     setSbW(nu);
     void window.tz.setSettings({ sidebarWidth: nu });
   }, []);
@@ -135,7 +135,7 @@ function Shell() {
       if (!s.rememberPassword) pwCache.current.clear();
       setSbCollapsed(!!s.sidebarCollapsed);
       if (typeof s.sidebarWidth === 'number' && Number.isFinite(s.sidebarWidth)) {
-        setSbW(Math.min(260, Math.max(156, Math.round(s.sidebarWidth))));
+        setSbW(Math.min(SB_MAX, Math.max(SB_MIN, Math.round(s.sidebarWidth))));
       }
       const acc = (s.accent as string) === 'purple' ? 'violet' : s.accent;
       if (acc && acc !== 'violet') document.documentElement.dataset.accent = acc;

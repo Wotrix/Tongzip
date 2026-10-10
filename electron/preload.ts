@@ -68,6 +68,8 @@ const api = {
   winMinimize: () => ipcRenderer.invoke('tz:win-minimize'),
   winMaximize: () => ipcRenderer.invoke('tz:win-maximize'),
   winClose: () => ipcRenderer.invoke('tz:win-close'),
+  /** 切换本窗口置顶,回读切换后的真实状态 */
+  winPin: (): Promise<boolean> => ipcRenderer.invoke('tz:win-pin'),
 
   /* 任务窗口:压缩启动时打开/唤回;晚开窗口用快照回放进行中任务 */
   taskWindowOpen: (): Promise<boolean> => ipcRenderer.invoke('tz:task-window-open'),

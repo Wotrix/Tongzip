@@ -12,7 +12,7 @@ import {
   IconClose, IconReveal, IconTest, IconPanel, IconTree, IconSidebar,
 } from '../components/icons';
 import FileGlyph, { EntryGlyph } from '../components/FileGlyph';
-import { ContextMenu, useToast, type CtxItem } from '../components/ui';
+import { ContextMenu, PanelHandle, usePanelDrag, useToast, type CtxItem } from '../components/ui';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '@/lib/utils';
@@ -61,6 +61,14 @@ export interface BrowserActions {
 
 type SortKey = 'name' | 'type' | 'size' | 'time';
 
+/* 目录树可拖宽度:默认/双击复位 160(取下限档),自由拖到 TREE_MAX(旧 400 太局促);
+   松手低于 TREE_COLLAPSE 即收起为竖条;从竖条往回拖过 TREE_PULL_BACK 实时预览完整面板 */
+const TREE_DEFAULT = 160;
+const TREE_COLLAPSE = 120;
+const TREE_MAX = 560;
+const TREE_RAIL_W = 36;
+const TREE_PULL_BACK = 96;
+
 export default function Browser({ info, archive, query, onSearch, actions, nav, sidebarHidden }: {
   info: ArchiveInfo;
   archive: string;
@@ -103,7 +111,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   useEffect(() => {
     void (async () => {
       const s = await window.tz.getSettings();
-      if (typeof s.treeWidth === 'number') setTreeW(Math.min(400, Math.max(160, Math.round(s.treeWidth)) || 160));
+      if (typeof s.treeWidth === 'number') setTreeW(Math.min(TREE_MAX, Math.max(TREE_COLLAPSE, Math.round(s.treeWidth)) || TREE_DEFAULT));
       await loadColWidths(setCols);
       setHidden(new Set(await loadHiddenCols()));
     })();

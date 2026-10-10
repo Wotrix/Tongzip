@@ -40,6 +40,8 @@ declare global {
       winMinimize(): void;
       winMaximize(): void;
       winClose(): void;
+      /** 切换本窗口置顶,回传切换后的状态 */
+      winPin(): Promise<boolean>;
       taskWindowOpen(): Promise<boolean>;
       taskSnapshot(): Promise<ProgressEvent[]>;
       taskPaths(): Promise<Record<string, { archive?: string; output?: string; dest?: string }>>;

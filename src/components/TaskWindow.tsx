@@ -1,15 +1,16 @@
 /**
- * 独立任务窗口 — 压缩启动时由主进程弹出的 frameless 小窗(?window=task 分流)。
+ * 独立任务窗口 — 压缩/解压启动时弹出的 frameless 小窗(?window=task 分流)。
  * 数据源:挂载时 taskSnapshot 回放已在跑的任务,再订阅 tz:progress 广播流;
  * 不自动关闭(Bandizip 式行为)——终态任务留在卡上供回看历史,仅右上角关闭按钮手动关。
  * 版式对标 Bandizip 进度窗:标题=当前任务状态 / 每任务「%+已用时间+进度条」
  * / 多任务时追加总进度 / 当前文件行 / 底部工具条(打开位置·暂停·停止)+「全部任务已结束」。
+ * 标题栏除拖拽区与窗控外另有「置顶」图钉钮:长解压时把小窗挂在最前,不抢焦点也能盯进度。
  */
 import { useEffect, useRef, useState } from 'react';
 import type { JobKind, ProgressEvent } from '@shared/types';
 import {
   IconClose, IconCompress, IconExtract, IconTest, IconDelete, IconFolderOpen, IconMax,
-  IconPause, IconPlay, IconReveal, IconStop, IconMore, IconMin,
+  IconPause, IconPin, IconPinOff, IconPlay, IconReveal, IconStop, IconMore, IconMin,
 } from './icons';
 import AppLogo from './AppLogo';
 import { ContextMenu, type CtxItem } from './ui';
@@ -36,6 +37,8 @@ export default function TaskWindow() {
   /** 暂停态是渲染本地概念:引擎 pauseTask 返回切换后的状态 */
   const [paused, setPaused] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  /** 置顶状态镜像主进程回读的真实值(只活在窗口生命周期内,关窗即复位) */
+  const [pinned, setPinned] = useState(false);
   /** 首见时刻:已用时间基准;每秒 tick 刷新显示 */
   const startedAt = useRef(new Map<string, number>());
   const [, setTick] = useState(0);
@@ -91,11 +94,13 @@ export default function TaskWindow() {
     if (r.ok) setPaused((p) => { const s = new Set(p); if (r.data) s.add(j.taskId); else s.delete(j.taskId); return s; });
   };
   const stopAll = () => running.forEach((j) => void window.tz.cancelTask(j.taskId));
+  const togglePin = () => void window.tz.winPin().then(setPinned);
 
   const menuItems: CtxItem[] = [
     { label: '打开文件位置', icon: <IconReveal />, disabled: !srcPath, onClick: () => srcPath && void window.tz.revealInExplorer(srcPath) },
     { label: '打开目标文件夹', icon: <IconFolderOpen />, disabled: !destPath, onClick: () => destPath && void window.tz.openPath(destPath) },
     { sep: true, label: '' },
+    { label: pinned ? '取消置顶' : '保持置顶', icon: pinned ? <IconPinOff /> : <IconPin />, onClick: togglePin },
     { label: '最小化', icon: <IconMin />, onClick: () => window.tz.winMinimize() },
     { label: '关闭任务窗口', icon: <IconClose />, onClick: () => window.tz.winClose() },
   ];
@@ -114,6 +119,14 @@ export default function TaskWindow() {
           </span>
         )}
         <div className="app-nodrag ml-auto flex items-center">
+          {/* 置顶图钉:未置顶描边灰、置顶染品牌色并打底,状态一眼可读 */}
+          <button className={cn(
+            'inline-flex h-[38px] w-[40px] items-center justify-center transition-colors hover:bg-accent active:bg-[var(--bg-active)]',
+            pinned ? 'bg-primary/10 text-primary hover:bg-accent/60' : 'text-muted-foreground hover:text-foreground',
+          )}
+            title={pinned ? '取消置顶' : '置顶窗口'} onClick={togglePin}>
+            {pinned ? <IconPin className="size-[15px]" /> : <IconPinOff className="size-[15px]" />}
+          </button>
           <button className="inline-flex h-[38px] w-[40px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
             title="最小化" onClick={() => window.tz.winMinimize()}><IconMin className="size-3" /></button>
           <button className="inline-flex h-[38px] w-[44px] items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
