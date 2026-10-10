@@ -5,3 +5,10 @@ release/
 .tmp/
 _ref_nanazip/
 *.log
+
+# 根目录调试产物:CDP 探针脚本、运行截图、临时压缩包一律不入库
+/tzm*
+/_nav.mjs
+/*.png
+/*.zip
+
