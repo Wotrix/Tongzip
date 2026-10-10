@@ -5,8 +5,8 @@
  * 对话框(压缩/解压/密码/确认)全局唯一,由 Shell 编排。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ArchiveEntry, ArchiveFormat, ArchiveInfo, JobKind } from '@shared/types';
-import { isArchiveExt } from '@shared/types';
+import type { ArchiveEntry, ArchiveFormat, ArchiveInfo, ExtractJob, JobKind, Settings } from '@shared/types';
+import { ERR, isArchiveExt } from '@shared/types';
 import Home from './views/Home';
 import Browser, { type BrowserActions, type NavState } from './views/Browser';
 import FolderView from './views/FolderView';
@@ -21,7 +21,7 @@ import CompressDialog from './components/CompressDialog';
 import ExtractDialog from './components/ExtractDialog';
 import PasswordDialog, { ConfirmDialog } from './components/PasswordDialog';
 import RenameDialog from './components/RenameDialog';
-import { TaskHubProvider, ToastHost, useTaskHub, useToast, type TrackedJob } from './components/ui';
+import { TaskHubProvider, ToastHost, useTaskHub, useToast, Modal, type TrackedJob } from './components/ui';
 import { Button } from './components/ui/button';
 import { cn } from '@/lib/utils';
 import { IconWarn } from './components/icons';
@@ -31,6 +31,8 @@ export interface AppApi {
   trackTask(taskId: string, kind: JobKind, onSettled: (j: TrackedJob) => void, meta?: { label?: string; path?: string; totalBytes?: number }): void;
   askPassword(target: string, onOk: (pw: string) => Promise<boolean>): void;
   lastPassword(key: string): string | undefined;
+  /** 按「记住本次会话密码」开关决定是否写入会话缓存 */
+  cachePassword(archive: string, pw: string): void;
   refreshArchive(): void;
 }
 
@@ -53,7 +55,8 @@ interface HostApi {
   confirm(v: { title: string; body: string; onOk: () => void }): void;
   openRename(archive: string): void;
   toggleSidebar(): void;
-  quickExtract(archive: string, intoSameDir?: boolean, entries?: string[], password?: string, totalBytes?: number): Promise<void>;
+  quickExtract(archive: string, intoSameDir?: boolean, entries?: string[], password?: string, totalBytes?: number,
+    overwrite?: ExtractJob['overwrite']): Promise<void>;
   pickAndOpen(): Promise<void>;
   /** 主窗:在标签中打开压缩包(文件夹标签内双击条目用) */
   openInTab(archive: string): Promise<void>;
@@ -75,16 +78,39 @@ function Shell() {
   const [pw, setPw] = useState<{ target: string; error?: string | null; onOk: (pw: string) => Promise<boolean> } | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; body: string; onOk: () => void } | null>(null);
   const [rename, setRename] = useState<{ archive: string; error?: string | null } | null>(null);
+  /* ask 解压预检发现目标同名文件:挂起任务,由模态框让用户决策后按所选模式重发 */
+  const [conflict, setConflict] = useState<{ archive: string; intoSameDir: boolean; entries: string[]; totalBytes?: number; count: number } | null>(null);
   const [engineWarn, setEngineWarn] = useState<string | null>(null);
   const [recents, setRecents] = useState<string[]>([]);
   const [glow, setGlow] = useState(false);
   const dragDepth = useRef(0);
   const pwCache = useRef(new Map<string, string>());
-  /* 侧边栏:仅冷启动双击压缩包打开软件时自动隐藏(移交/应用内打开不动);手动开关过一次则尊重其选择;宽度可拖 156–260,默认取下限 156 并持久化 */
+  /* rememberPassword 开关(设置页可实时切换):关闭时缓存只读不写并立即清空(会话内,不落盘) */
+  const rememberPw = useRef(false);
+  /* 双击/外部打开压缩包的动作(设置页 dblClickAction) */
+  const [dblAction, setDblAction] = useState<Settings['dblClickAction']>('open');
+  /* 侧边栏:仅冷启动双击压缩包打开软件时自动隐藏(移交/应用内打开不动);手动开关过一次则尊重其选择;宽度可拖 156–260,默认取下限 156 并持久化;
+     拖到最小不弹回而是收起为竖条(sbCollapsed,持久化),与专注隐藏(sbHidden)独立 */
   const [sbHidden, setSbHidden] = useState(false);
+  const [sbCollapsed, setSbCollapsed] = useState(false);
   const [sbW, setSbW] = useState(156);
   const sbTouched = useRef(false);
-  const toggleSidebar = useCallback(() => { sbTouched.current = true; setSbHidden((v) => !v); }, []);
+  /* 手动唤回(Alt+B/工具栏)时顺带解除收起态,保证总有出路 */
+  const toggleSidebar = useCallback(() => {
+    sbTouched.current = true;
+    setSbCollapsed(false);
+    void window.tz.setSettings({ sidebarCollapsed: false });
+    setSbHidden((v) => !v);
+  }, []);
+  const collapseSidebar = useCallback(() => {
+    setSbCollapsed(true);
+    setSbHidden(false); // 收起态自带竖条恢复入口,不再叠加「完全隐藏」语义
+    void window.tz.setSettings({ sidebarCollapsed: true });
+  }, []);
+  const expandSidebar = useCallback(() => {
+    setSbCollapsed(false);
+    void window.tz.setSettings({ sidebarCollapsed: false });
+  }, []);
   const resizeSidebar = useCallback((w: number) => {
     const nu = Math.min(260, Math.max(156, Math.round(w) || 156));
     setSbW(nu);
@@ -95,20 +121,36 @@ function Shell() {
     trackTask: (taskId, kind, onSettled, meta) => hub.track(taskId, kind, onSettled, meta),
     askPassword: (target, onOk) => setPw({ target, onOk }),
     lastPassword: (key) => pwCache.current.get(key),
+    cachePassword: (archive, pw) => { if (rememberPw.current && pw) pwCache.current.set(archive, pw); },
     refreshArchive: () => { void reloadRef.current?.(); },
   };
 
-  /* ---------- 初始设置(最近打开 + 强调色) ---------- */
+  /* ---------- 初始设置(最近打开 + 强调色 + 双击动作/记住密码开关) ---------- */
   useEffect(() => {
     void (async () => {
       const s = await window.tz.getSettings();
       setRecents(s.recentArchives ?? []);
+      setDblAction(s.dblClickAction ?? 'open');
+      rememberPw.current = !!s.rememberPassword;
+      if (!s.rememberPassword) pwCache.current.clear();
+      setSbCollapsed(!!s.sidebarCollapsed);
       if (typeof s.sidebarWidth === 'number' && Number.isFinite(s.sidebarWidth)) {
         setSbW(Math.min(260, Math.max(156, Math.round(s.sidebarWidth))));
       }
       const acc = (s.accent as string) === 'purple' ? 'violet' : s.accent;
       if (acc && acc !== 'violet') document.documentElement.dataset.accent = acc;
     })();
+    /* 设置页实时切换时同步开关;关掉瞬间清空已缓存密码,兑现「关闭应用后清除/仅本会话」承诺 */
+    const onPatched = (e: Event) => {
+      const p = (e as CustomEvent<Partial<Settings>>).detail;
+      if ('rememberPassword' in p) {
+        rememberPw.current = !!p.rememberPassword;
+        if (!p.rememberPassword) pwCache.current.clear();
+      }
+      if ('dblClickAction' in p && p.dblClickAction) setDblAction(p.dblClickAction);
+    };
+    window.addEventListener('tz:settings-patched', onPatched);
+    return () => window.removeEventListener('tz:settings-patched', onPatched);
   }, []);
 
   const pushRecent = useCallback((archive: string) => {
@@ -140,8 +182,11 @@ function Shell() {
         void window.tz.setSettings({ recentArchives: next });
         return next;
       });
-      pwCache.current.set(nu, pwCache.current.get(oldPath) ?? '');
       pwCache.current.delete(oldPath);
+      if (rememberPw.current) {
+        const old = pwCache.current.get(oldPath);
+        if (old) pwCache.current.set(nu, old);
+      }
     }
     setRename(null);
     toast(`已重命名为「${basename(nu)}」`);
@@ -180,16 +225,16 @@ function Shell() {
     if (r.ok) {
       createTab(archive, r.data);
       pushRecent(archive);
-      if (password) pwCache.current.set(archive, password);
+      if (password) api.cachePassword(archive, password);
       return;
     }
-    if (r.code === 'NEED_PASSWORD') {
+    if (r.code === ERR.NEED_PASSWORD) {
       api.askPassword(archive, async (p) => {
         const rr = await window.tz.listArchive(archive, p);
         if (rr.ok) {
           createTab(archive, rr.data);
           pushRecent(archive);
-          pwCache.current.set(archive, p);
+          api.cachePassword(archive, p);
           return true;
         }
         setPw((s) => (s ? { ...s, error: '密码不正确,请重试。' } : s));
@@ -197,7 +242,7 @@ function Shell() {
       });
       return;
     }
-    if (r.code === 'ENGINE_MISSING') { setEngineWarn(r.message); return; }
+    if (r.code === ERR.ENGINE_MISSING) { setEngineWarn(r.message); return; }
     toast(r.message, 'err');
   }, [tabs, toast, pushRecent, createTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -212,25 +257,35 @@ function Shell() {
     setView('browse');
   }, [tabs]);
 
-  /* ---------- 快速解压(entries 为空=全部) ---------- */
+  /* ---------- 快速解压(entries 为空=全部);overwrite 默认询问,冲突时不启动任务而是弹决策框 ---------- */
   const quickExtract = useCallback(async (
     archive: string, intoSameDir = false, entries: string[] = [], password?: string, totalBytes?: number,
+    overwrite: ExtractJob['overwrite'] = 'ask',
   ) => {
     const dest = intoSameDir
       ? parentDir(archive).replace(/\//g, '\\')
       : await window.tz.quickDest(archive);
     const pw2 = password ?? pwCache.current.get(archive);
-    const r = await window.tz.extract({ archive, dest, entries, overwrite: 'ask', password: pw2 });
+    const r = await window.tz.extract({ archive, dest, entries, overwrite, password: pw2 });
     if (!r.ok) {
-      if (r.code === 'ENGINE_MISSING') setEngineWarn(r.message);
+      if (r.code === ERR.ENGINE_MISSING) setEngineWarn(r.message);
       else toast(r.message, 'err');
       return;
     }
+    if (r.data.conflicts?.length) {
+      setConflict({ archive, intoSameDir, entries, totalBytes, count: r.data.conflicts.length });
+      return;
+    }
+    if (!r.data.taskId) return;
     hub.track(r.data.taskId, 'extract', async (j) => {
       if (j.status === 'done') toast(`已解压到 ${dest}`);
       else if (j.status === 'error') {
-        if (j.message === 'NEED_PASSWORD' || j.message?.includes('密码')) {
-          api.askPassword(archive, async (p) => { await quickExtract(archive, intoSameDir, entries, p); return true; });
+        if (j.code === ERR.NEED_PASSWORD || j.message?.includes('密码')) {
+          api.askPassword(archive, async (p) => {
+            api.cachePassword(archive, p);
+            await quickExtract(archive, intoSameDir, entries, p, totalBytes, overwrite);
+            return true;
+          });
         } else toast(j.message ?? '解压失败', 'err');
       }
     }, { label: basename(archive), path: archive, totalBytes });
@@ -249,14 +304,20 @@ function Shell() {
       if (flag === '--auto-extract') void quickExtract(archive, false);
       else if (flag === '--extract-here') void quickExtract(archive, true);
       else if (flag === '--extract-dialog') setExtract({ archive, entries: [] });
-      else { if (coldStart && !sbTouched.current) setSbHidden(true); void openInTab(archive); }
+      else {
+        if (coldStart && !sbTouched.current) setSbHidden(true);
+        /* 兑现设置项 dblClickAction:资源管理器双击/打开方式进入此分支,按用户选择路由 */
+        if (dblAction === 'quickExtract') void quickExtract(archive);
+        else if (dblAction === 'extractDialog') setExtract({ archive, entries: [] });
+        else void openInTab(archive);
+      }
     } else {
       const EXT_TOKENS = ['.7z', '.zip', '.tar.gz', '.tar.bz2', '.tar.xz', '.tar.zst', '.tar'];
       const ext = real.find((x) => EXT_TOKENS.includes(x.toLowerCase()));
       const src = real.filter((x) => x !== ext);
       setCompress({ sources: src, format: ext ? extToFormat(ext) : undefined });
     }
-  }, [openInTab, quickExtract]);
+  }, [openInTab, quickExtract, dblAction]);
 
   useEffect(() => {
     void (async () => {
@@ -408,7 +469,7 @@ function Shell() {
     confirm: (v) => setConfirm(v),
     openRename: (a) => setRename({ archive: a }),
     toggleSidebar,
-    quickExtract: (a, d, e, p, tb) => quickExtract(a, d ?? false, e ?? [], p, tb),
+    quickExtract: (a, d, e, p, tb, ov) => quickExtract(a, d ?? false, e ?? [], p, tb, ov),
     pickAndOpen,
     openInTab,
     registerReload: (fn) => { reloadRef.current = fn; },
@@ -421,9 +482,12 @@ function Shell() {
     <div className="app-shell">
       <Sidebar
         view={view}
-        hidden={sbHidden && view === 'browse'}
+        hidden={sbHidden && view === 'browse' && !sbCollapsed}
+        collapsed={sbCollapsed}
+        onExpand={expandSidebar}
         width={sbW}
         onResize={resizeSidebar}
+        onCollapse={collapseSidebar}
         runningCount={runningCount}
         activeArchive={activeTab ? basename(activeTab.archive || activeTab.dir || '') : null}
         onNav={(v) => { if (v !== 'browse' || tabs.length) setView(v); }}
@@ -451,7 +515,7 @@ function Shell() {
             <div className="tabs-stage">
               {tabs.map((t) => (
                 <div key={t.id} className="tab-slot" hidden={t.id !== activeId}>
-                  <TabView tab={t} active={t.id === activeId} host={host} sbHidden={sbHidden} />
+                  <TabView tab={t} active={t.id === activeId} host={host} sbHidden={(sbHidden && view === 'browse') || sbCollapsed} />
                 </div>
               ))}
             </div>
@@ -522,6 +586,19 @@ function Shell() {
           onSubmit={(n) => void doRename(rename.archive, n)}
           onClose={() => setRename(null)}
         />
+      )}
+      {conflict && (
+        <Modal title="目标位置已有同名文件" icon={<IconWarn />} onClose={() => setConflict(null)} width={430}>
+          <p className="mb-[18px] text-[13px] leading-[1.6] text-muted-foreground">
+            解压「{basename(conflict.archive)}」时,目标文件夹中已存在 {conflict.count} 个同名文件。请选择处理方式。
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConflict(null)}>取消</Button>
+            <Button variant="outline" size="sm" onClick={() => { const c = conflict; setConflict(null); void quickExtract(c.archive, c.intoSameDir, c.entries, undefined, c.totalBytes, 'skip'); }}>跳过已有</Button>
+            <Button variant="outline" size="sm" onClick={() => { const c = conflict; setConflict(null); void quickExtract(c.archive, c.intoSameDir, c.entries, undefined, c.totalBytes, 'rename'); }}>自动重命名</Button>
+            <Button variant="destructive" size="sm" onClick={() => { const c = conflict; setConflict(null); void quickExtract(c.archive, c.intoSameDir, c.entries, undefined, c.totalBytes, 'overwrite'); }}>全部覆盖</Button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -599,18 +676,20 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
       });
     },
     onOpenFile: async (entry: ArchiveEntry) => {
+      /* 本地文件用 shell.openPath 通道打开(open-external 已限制 http/https 协议) */
       const r = await window.tz.extractSingleToTemp(archive, entry.path, host.lastPassword(archive));
       if (!r.ok) {
-        if (r.code === 'NEED_PASSWORD') {
+        if (r.code === ERR.NEED_PASSWORD) {
           host.askPassword(archive, async (p) => {
             const rr = await window.tz.extractSingleToTemp(archive, entry.path, p);
-            if (rr.ok) { await window.tz.openExternal(`file:///${rr.data.replace(/\\/g, '/')}`); return true; }
+            if (rr.ok) { const o = await window.tz.openPath(rr.data); if (!o.ok) toast(o.message, 'err'); return true; }
             return false;
           });
         } else toast(r.message, 'err');
         return;
       }
-      await window.tz.openExternal(`file:///${r.data.replace(/\\/g, '/')}`);
+      const o = await window.tz.openPath(r.data);
+      if (!o.ok) toast(o.message, 'err');
     },
     onPreview: (entry: ArchiveEntry) => {
       toast(`无法预览 ${basename(entry.path)}。`);

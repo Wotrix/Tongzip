@@ -10,8 +10,9 @@ import type { FolderEntry } from '@shared/types';
 import {
   IconAdd, IconArchive, IconBack, IconChevronRight, IconClose, IconDelete, IconFolder,
   IconForward, IconHome, IconMax, IconMin, IconMore, IconOpen, IconRefresh, IconReveal,
-  IconSearch, IconUp, IconWarn, Logo,
+  IconSearch, IconUp, IconWarn,
 } from '../components/icons';
+import AppLogo from '../components/AppLogo';
 import FileGlyph from '../components/FileGlyph';
 import { ContextMenu, useToast, type CtxItem } from '../components/ui';
 import { Button } from '../components/ui/button';
@@ -19,8 +20,8 @@ import { Input } from '../components/ui/input';
 import { cn } from '@/lib/utils';
 import { fmtBytes } from '../lib/format';
 import {
-  ARROW_CLS, CRUMB_CLS, TB_CLS, TB_OUTLINE_CLS, clampCol, clampName, measure,
-  CELL_FONT, HEAD_FONT, LIST_GRID, CK_CLS, loadColWidths,
+  ARROW_CLS, CRUMB_CLS, TB_CLS, TB_OUTLINE_CLS, clampCol, clampName, COL_LIMITS, measure,
+  CELL_FONT, HEAD_FONT, LIST_GRID, CK_CLS, loadColWidths, loadHiddenCols, HIDEABLE_COLS, isHiddenCol,
   type ColKey, type AnyColKey,
 } from './listTokens';
 
@@ -140,7 +141,9 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
   /* ---------- 列宽:与 Browser 同一份持久化(listColumnWidths),两视图改动互见 ---------- */
   const [cols, setCols] = useState<Partial<Record<ColKey, number>> & { name?: number }>({});
   const [colDrag, setColDrag] = useState<AnyColKey | null>(null);
-  useEffect(() => { void loadColWidths(setCols); }, []);
+  /* 被拖到下限而隐藏的辅助列(名称列恒显);与 Browser 共用 hiddenColumns 持久化 */
+  const [hidden, setHidden] = useState<Set<ColKey>>(new Set());
+  useEffect(() => { void (async () => { await loadColWidths(setCols); setHidden(new Set(await loadHiddenCols())); })(); }, []);
   const autoW = useMemo<Record<ColKey | 'name', number>>(() => {
     const pad = 12 + 8;
     const fit = (k: ColKey, texts: string[], head: string) => clampCol(k,
@@ -165,6 +168,16 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
     setCols(next);
     void window.tz.setSettings({ listColumnWidths: next });
   };
+  /* 隐藏/恢复辅助列:写回 hiddenColumns(与 Browser 共享持久化真相) */
+  const setHiddenCols = (next: Set<ColKey>) => {
+    setHidden(next);
+    void window.tz.setSettings({ hiddenColumns: [...next] });
+  };
+  const toggleCol = (k: ColKey) => {
+    const next = new Set(hidden);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    setHiddenCols(next);
+  };
   const startColDrag = (k: AnyColKey, e: React.PointerEvent) => {
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
@@ -179,6 +192,11 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
       setColDrag(null);
+      /* 拖到最小不弹回原形:向左拖至列宽下限即把该列收起(名称列除外),从表头「更多」恢复 */
+      if (k !== 'name' && ev.clientX < startX && base + ev.clientX - startX <= COL_LIMITS[k][0]) {
+        toggleCol(k);
+        return;
+      }
       commitCols({ ...cols, [k]: at(ev) });
     };
     setColDrag(k);
@@ -299,6 +317,9 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
     { label: '新建压缩包…', icon: <IconAdd />, onClick: () => onCompress?.([]) },
     { label: '在新窗口浏览当前目录', icon: <IconFolder />, onClick: () => void window.tz.browseWindowOpen(cwd) },
     { sep: true, label: '' },
+    /* 列显示/隐藏开关:拖到最小收起的列从这里恢复 */
+    ...HIDEABLE_COLS.map((c) => ({ label: hidden.has(c.key) ? `显示${c.label}列` : `隐藏${c.label}列`, onClick: () => toggleCol(c.key) })),
+    { sep: true, label: '' },
     { label: '在资源管理器中打开', icon: <IconReveal />, onClick: () => void window.tz.openPath(cwd) },
   ];
 
@@ -309,8 +330,8 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
       {/* 独立窗口迷你标题栏:Logo + 目录名 + 窗控(窗控 IPC 按 sender 定位) */}
       {standalone && (
         <header className="app-drag flex h-[38px] shrink-0 items-center gap-2 bg-secondary pl-3 text-[12.5px] font-semibold">
-          <span className="flex size-[18px] items-center justify-center rounded-[5px] bg-primary text-primary-foreground">
-            <Logo className="size-[11px]" />
+          <span className="flex size-[18px] shrink-0 items-center justify-center">
+            <AppLogo className="size-[18px]" />
           </span>
           <span className="min-w-0 truncate" title={cwd}>{folderName} - TongZip</span>
           <div className="app-nodrag ml-auto flex items-center">
@@ -370,7 +391,7 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
       <div className="flex min-h-0 flex-1">
         <div
           className={cn('entry-list min-h-0 flex-1 overflow-auto pb-5', colDrag && 'select-none')}
-          style={{ '--col-name': `${colW('name')}px`, '--col-type': `${colW('type')}px`, '--col-size': `${colW('size')}px`, '--col-time': `${colW('time')}px` } as React.CSSProperties}
+          style={{ '--col-name': `${colW('name')}px`, '--col-type': isHiddenCol(hidden, 'type') ? '0px' : `${colW('type')}px`, '--col-size': isHiddenCol(hidden, 'size') ? '0px' : `${colW('size')}px`, '--col-time': isHiddenCol(hidden, 'time') ? '0px' : `${colW('time')}px` } as React.CSSProperties}
           onContextMenu={(e) => onContextMenu(e, null)}
         >
           <div className={cn(LIST_GRID, 'list-head sticky top-0 z-[1] h-8 border-b border-border bg-background text-xs text-muted-foreground')}>
@@ -378,9 +399,9 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
               <input type="checkbox" checked={allChecked} readOnly className={CK_CLS} />
             </label>
             {sortHead('name', '名称')}
-            {sortHead('type', '类型')}
-            {sortHead('size', '大小')}
-            {sortHead('time', '修改时间')}
+            {isHiddenCol(hidden, 'type') ? <span aria-hidden /> : sortHead('type', '类型')}
+            {isHiddenCol(hidden, 'size') ? <span aria-hidden /> : sortHead('size', '大小')}
+            {isHiddenCol(hidden, 'time') ? <span aria-hidden /> : sortHead('time', '修改时间')}
             <span aria-hidden />
           </div>
           {err && (
@@ -409,9 +430,9 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
                 <FileGlyph name={r.name} isDir={r.isDir} size={18} />
                 <span className="truncate">{r.name}</span>
               </div>
-              <div className="type truncate px-1.5 text-[12.5px] tabular-nums text-muted-foreground">{typeOf(r)}</div>
-              <div className="size truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.isDir ? '' : fmtBytes(r.size)}</div>
-              <div className="time truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>
+              {isHiddenCol(hidden, 'type') ? <span aria-hidden /> : <div className="type truncate px-1.5 text-[12.5px] tabular-nums text-muted-foreground">{typeOf(r)}</div>}
+              {isHiddenCol(hidden, 'size') ? <span aria-hidden /> : <div className="size truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.isDir ? '' : fmtBytes(r.size)}</div>}
+              {isHiddenCol(hidden, 'time') ? <span aria-hidden /> : <div className="time truncate px-1.5 text-[12.5px] tabular-nums text-secondary-foreground">{r.mtime}</div>}
               <span aria-hidden />
             </div>
           ))}

@@ -3,6 +3,7 @@
  */
 import { useEffect, useState } from 'react';
 import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn, IconReveal, IconCopy, IconDelete } from '../components/icons';
+import AppLogo from '../components/AppLogo';
 import FileGlyph from '../components/FileGlyph';
 import { ContextMenu, useTaskHub, useToast, type DoneJob } from '../components/ui';
 import { RunningCard, useTaskMenu, revealArchive } from '../components/TaskCenter';
@@ -42,20 +43,23 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
     void window.tz.getSettings().then((v) => setShow({ recentOpen: v.showRecentOpen, recentTasks: v.showRecentTasks }));
   }, []);
 
-  /* 校验最近记录是否存在(死链灰显)并取真实体积 */
+  /* 校验最近记录是否存在(死链灰显)并取真实体积:并行 IPC,避免 N+1 串行卡顿 */
   useEffect(() => {
     void (async () => {
+      const rows = await Promise.all(recents.map(async (p) => {
+        if (!(await window.tz.exists(p))) return null;
+        const s = await window.tz.totalSize([p]);
+        return { p, size: s.ok ? s.data : 0 };
+      }));
       const okSet = new Set<string>();
       const sizeMap = new Map<string, number>();
-      for (const p of recents) {
-        const a = await window.tz.exists(p);
-        if (!a) continue;
-        okSet.add(p);
-        const s = await window.tz.totalSize([p]);
-        if (s.ok) sizeMap.set(p, s.data);
-        setSizes(new Map(sizeMap));
+      for (const r of rows) {
+        if (!r) continue;
+        okSet.add(r.p);
+        sizeMap.set(r.p, r.size);
       }
       setAlive(okSet);
+      setSizes(sizeMap);
     })();
   }, [recents]);
 
@@ -72,9 +76,12 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
     <div className={cn('min-h-0 flex-1 justify-center overflow-auto bg-background px-8 pt-9 pb-14 flex',
       bothHidden && '[align-items:safe_center]')}>
       <div className="mx-auto w-[880px] max-w-full">
-        <div className="mb-[22px]">
-          <h1 className="text-[22px] font-bold tracking-[.01em] text-foreground">欢迎使用 TongZip</h1>
-          <p className="mt-[5px] text-[13px] text-muted-foreground">压缩、解压与文件管理,在这一处完成。</p>
+        <div className="mb-[22px] flex items-center gap-3">
+          <AppLogo className="size-[40px] shrink-0" />
+          <div>
+            <h1 className="text-[22px] font-bold tracking-[.01em] text-foreground">欢迎使用 TongZip</h1>
+            <p className="mt-[5px] text-[13px] text-muted-foreground">压缩、解压与文件管理,在这一处完成。</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-3">

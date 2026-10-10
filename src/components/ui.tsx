@@ -74,6 +74,8 @@ export interface TrackedJob {
   file: string;
   status: ProgressEvent['status'];
   message?: string;
+  /** 机读错误码(ERR.*),供 UI 精确判断 NEED_PASSWORD 等场景,不依赖文案 */
+  code?: string;
   /** 展示名(压缩包/输出文件名) */
   label: string;
   /** 压缩包完整路径(压缩=输出,解压/测试/删除=源包),供「打开文件位置」定位 */
@@ -94,6 +96,8 @@ export interface DoneJob {
   path?: string;
   status: 'done' | 'error' | 'cancelled';
   message?: string;
+  /** 机读错误码,同 TrackedJob.code */
+  code?: string;
   at: number;
 }
 
@@ -120,12 +124,12 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
   /** 终态统一处理:更新卡、回调、写历史、5s 后收起。只依赖 setState/ref,可被 effect 与 track 共用 */
   const finalize = (ev: ProgressEvent) => {
     setJobs((prev) => prev.map((j) => j.taskId === ev.taskId
-      ? { ...j, status: ev.status, message: ev.message ?? j.message, percent: ev.status === 'done' ? 100 : j.percent, updatedAt: Date.now() }
+      ? { ...j, status: ev.status, message: ev.message ?? j.message, code: ev.code ?? j.code, percent: ev.status === 'done' ? 100 : j.percent, updatedAt: Date.now() }
       : j));
     const m = meta.current.get(ev.taskId);
     const j = { taskId: ev.taskId, kind: ev.kind, label: m?.label ?? '', path: m?.path };
     settled.current.get(ev.taskId)?.({
-      ...j, percent: ev.percent, file: ev.file, status: ev.status, message: ev.message,
+      ...j, percent: ev.percent, file: ev.file, status: ev.status, message: ev.message, code: ev.code,
       startedAt: 0, updatedAt: 0, samples: [],
     });
     settled.current.delete(ev.taskId);
@@ -133,6 +137,7 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
       ...j,
       status: ev.status === 'running' ? 'done' : ev.status,
       message: ev.message,
+      code: ev.code,
       at: Date.now(),
     }, ...prev].slice(0, 14));
     // 终态任务卡片 5s 后从"进行中"列表收起(历史保留)

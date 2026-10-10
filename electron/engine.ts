@@ -22,7 +22,7 @@ import type {
   JobKind,
   ProgressEvent,
 } from '../shared/types';
-import { isArchiveExt } from '../shared/types';
+import { ERR, isArchiveExt } from '../shared/types';
 
 /* ------------------------------------------------------------------ */
 /* 引擎定位                                                            */
@@ -86,7 +86,7 @@ export async function detectEngine(manual?: string | null): Promise<EngineInfo> 
     } catch { /* 继续下一个候选 */ }
   }
   throw new EngineError(
-    'ENGINE_MISSING',
+    ERR.ENGINE_MISSING,
     '未找到压缩引擎。请安装 7-Zip,或在设置中手动指定 7z.exe 路径。',
   );
 }
@@ -97,7 +97,7 @@ function infoFrom(stdout: string, exe: string, source: EngineInfo['source']): En
 }
 
 function engineExe(): string {
-  if (!cachedEngine) throw new EngineError('ENGINE_MISSING', '压缩引擎未就绪,请先检测引擎。');
+  if (!cachedEngine) throw new EngineError(ERR.ENGINE_MISSING, '压缩引擎未就绪,请先检测引擎。');
   return cachedEngine.exe;
 }
 
@@ -138,6 +138,9 @@ function runStep(
     try {
       proc = spawn(engineExe(), args, { windowsHide: true });
     } catch (e) { reject(e); return; }
+    /* 必须立即关闭 stdin:加密包缺密码时引擎会打"Enter password"并阻塞等输入;
+       管道常开=任务永挂,关闭(EOF)则引擎以空密码继续→快速失败(实测 255/2) */
+    proc.stdin?.end();
     handle.proc = proc;
 
     /* 引擎输出按字节累积、按行切分后逐行解码,避免多字节字符被 chunk 截断 */
@@ -197,6 +200,7 @@ export function cancelTask(taskId: string): boolean {
 async function setProcessSuspended(pid: number, suspend: boolean): Promise<void> {
   // 实测:静态类型名与 -PassThru 变量仅在 -File 脚本内跨语句可靠(-Command 在 PS5.1/7 行为不一致),
   // 故将脚本落盘后用 -File 执行,退出码即 NTSTATUS(0=成功)。
+  // 文件名含随机后缀:固定可预测名存在被预占替换(TOCTOU)风险,也避免并发挂起/恢复互踩。
   const cs = [
     'using System;using System.Runtime.InteropServices;',
     'public static class TZSuspend{',
@@ -208,7 +212,7 @@ async function setProcessSuspended(pid: number, suspend: boolean): Promise<void>
     'int r=s?NtSuspendProcess(h):NtResumeProcess(h);CloseHandle(h);return r;}',
     '}',
   ].join('');
-  const scriptPath = path.join(os.tmpdir(), 'TongZip', `suspend-${pid}-${suspend ? 's' : 'r'}.ps1`);
+  const scriptPath = path.join(os.tmpdir(), 'TongZip', `suspend-${pid}-${randomUUID().slice(0, 8)}.ps1`);
   fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
   const body = [
     `$t=Add-Type -PassThru -TypeDefinition '${cs.replace(/'/g, "''")}'`,
@@ -249,8 +253,8 @@ function emitStart(taskId: string, kind: JobKind, onProgress: ProgressFn) {
 function emitDone(taskId: string, kind: JobKind, onProgress: ProgressFn, message: string) {
   onProgress({ taskId, kind, percent: 100, file: '', status: 'done', message });
 }
-function emitError(taskId: string, kind: JobKind, onProgress: ProgressFn, message: string) {
-  onProgress({ taskId, kind, percent: 0, file: '', status: 'error', message });
+function emitError(taskId: string, kind: JobKind, onProgress: ProgressFn, message: string, code?: string) {
+  onProgress({ taskId, kind, percent: 0, file: '', status: 'error', message, code });
 }
 
 /** 将失败退出码翻译成用户可读原因 */
@@ -260,6 +264,9 @@ function interpretFailure(code: number, stdout: string): { message: string; need
     lower.includes('wrong password') || lower.includes('data error in encrypted') ||
     lower.includes('not correct password');
   if (needsPassword) return { message: '密码不正确。', needsPassword: true };
+  /* 管道模式无密码解压加密包:引擎会打"Enter password (will not be echoed)"后以 255 退出(实测),
+     这行提示只在首次询问时出现,密码错误时不会出现,可用来区分「缺密码」与「错密码」 */
+  if (lower.includes('enter password')) return { message: '该压缩包已加密,需要密码。', needsPassword: true };
   if (lower.includes('missing volume') || lower.includes('cannot open the file as archive') && lower.includes('volume')) {
     return { message: '缺少其余分卷文件,请把所有分卷放在同一目录。', needsPassword: false };
   }
@@ -273,7 +280,7 @@ function interpretFailure(code: number, stdout: string): { message: string; need
     return { message: '存在错误:部分文件处理失败,详见日志。', needsPassword: false };
   }
   if (code === 1) return { message: '完成,但存在警告(部分文件被跳过)。', needsPassword: false };
-  /* 兑底也附上引擎输出末几行,避免只报裸退出码 */
+  /* 兜底也附上引擎输出末几行,避免只报裸退出码 */
   const detail = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(-2).join(' / ');
   return { message: `引擎返回错误 (code ${code})${detail ? `: ${detail.slice(0, 160)}` : ''}`, needsPassword: false };
 }
@@ -291,11 +298,11 @@ export async function listArchive(archive: string, password?: string): Promise<A
     stdout = (await probeArgs(args)).stdout;
   } catch (err) {
     const e = err as { code?: string; stdout?: string; message?: string };
-    if (e.code === 'ENOENT') throw new EngineError('ENGINE_MISSING', '压缩引擎未就绪。');
+    if (e.code === 'ENOENT') throw new EngineError(ERR.ENGINE_MISSING, '压缩引擎未就绪。');
     const text = (e.stdout ?? '') + (e.message ?? '');
     const why = interpretFailure(2, text);
-    if (why.needsPassword) throw new EngineError('NEED_PASSWORD', '该压缩包已加密。');
-    throw new EngineError('LIST_FAILED', why.message);
+    if (why.needsPassword) throw new EngineError(ERR.NEED_PASSWORD, '该压缩包已加密。');
+    throw new EngineError(ERR.LIST_FAILED, why.message);
   }
   const info = parseSlt(stdout);
   /* zip 系:7za 的 Modified 来自本地头,缺失/置 0 时用中央目录(权威源)纠偏 */
@@ -498,6 +505,8 @@ function compressArgs(job: CompressJob, output: string): string[] {
     args.push(job.multiThread ? '-mmt=on' : '-mmt=off');
   }
   if (job.password) {
+    /* 密码只能经 argv 传递:7za 21.07 实测 @listfile 仅承载文件名、-p{prompt} 管道下读不到 stdin,
+     * 无安全的旁路通道;缓存/落盘策略由渲染层 rememberPassword 控制(不落盘) */
     args.push(`-p${job.password}`);
     if (fmt === '7z' && job.encryptHeaders) args.push('-mhe=on');
   }
@@ -558,8 +567,6 @@ export async function runCompress(job: CompressJob, onProgress: ProgressFn): Pro
   return { taskId };
 }
 
-type JobKindName = JobKind;
-void (0 as unknown as JobKindName);
 function finishCancel(_id: string, kind: JobKind, fn: ProgressFn) {
   fn({ taskId: _id, kind, percent: 0, file: '', status: 'cancelled', message: '任务已取消。' });
 }
@@ -579,7 +586,7 @@ export async function runExtract(job: ExtractJob, onProgress: ProgressFn): Promi
   if (job.overwrite === 'overwrite') args.push('-aoa');
   else if (job.overwrite === 'skip') args.push('-aos');
   else if (job.overwrite === 'rename') args.push('-aou');
-  if (job.password) args.push(`-p${job.password}`);
+  if (job.password) args.push(`-p${job.password}`); // 密码仅能走 argv,见 compressArgs 内实测说明
   /* 7z 把第一个非开关参数当压缩包:archive 必须在 entries 之前 */
   args.push(job.archive);
   if (job.entries?.length) args.push(...job.entries);
@@ -592,8 +599,9 @@ export async function runExtract(job: ExtractJob, onProgress: ProgressFn): Promi
       if (handle.cancelled) return finishCancel(taskId, 'extract', onProgress);
       if (r.code > 1) {
         const why = interpretFailure(r.code, r.stdout);
-        if (why.needsPassword && !job.password) {
-          return emitError(taskId, 'extract', onProgress, 'NEED_PASSWORD');
+        if (why.needsPassword) {
+          /* 机读码供渲染层弹密码框;文案保持人可读,任务窗口直接展示也不刺眼 */
+          return emitError(taskId, 'extract', onProgress, job.password ? '密码不正确。' : '该压缩包已加密,需要密码。', ERR.NEED_PASSWORD);
         }
         return emitError(taskId, 'extract', onProgress, why.message);
       }
@@ -612,16 +620,41 @@ export async function runExtract(job: ExtractJob, onProgress: ProgressFn): Promi
 /** 解压完成后按用户指定的新名重命名落地条目;单条失败不影响整体结果 */
 function applyExtractRenames(job: ExtractJob): void {
   if (!job.renames) return;
+  const root = path.resolve(job.dest);
   for (const [entry, newName] of Object.entries(job.renames)) {
     try {
-      const parts = entry.split('/').filter(Boolean);
+      /* 剪除 . / .. 段:恶意条目名(../../x)不得借重命名逃出目标目录(zip-slip 防线) */
+      const parts = entry.split('/').filter((s) => s && s !== '.' && s !== '..');
       const clean = newName.replace(/[\\/:*?"<>|]/g, '').trim();
-      if (!parts.length || !clean || clean === parts[parts.length - 1]) continue;
-      const src = path.join(job.dest, ...parts);
-      const dst = path.join(path.dirname(src), clean);
-      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.renameSync(src, dst);
+      if (!parts.length || !clean || /^\.+$/.test(clean) || clean === parts[parts.length - 1]) continue;
+      const src = path.resolve(root, ...parts);
+      if (!src.startsWith(root + path.sep)) continue; // 最终校验:解析后仍在 dest 内
+      const dst = path.resolve(path.dirname(src), clean);
+      if (!dst.startsWith(root + path.sep)) continue;
+      if (src !== dst && fs.existsSync(src) && !fs.existsSync(dst)) fs.renameSync(src, dst);
     } catch { /* 重命名失败时保留原名 */ }
   }
+}
+
+/**
+ * ask 模式预检:列出解压后会覆盖目标目录已有文件的条目(上限 50 项)。
+ * 7z 经管道时无法交互询问且 -y 恒传,不预检则「询问」实际等于静默覆盖。
+ * 列目录失败(加密无密码/引擎异常)时返回空 = 不拦截,由任务错误链路兜底。
+ */
+export async function extractConflicts(job: ExtractJob): Promise<string[]> {
+  let info: ArchiveInfo;
+  try { info = await listArchive(job.archive, job.password); } catch { return []; }
+  const sels = (job.entries ?? []).map((s) => s.replace(/\/+$/, ''));
+  const inSel = (p: string) => !sels.length || sels.some((s) => p === s || p.startsWith(`${s}/`));
+  const out: string[] = [];
+  for (const e of info.entries) {
+    if (e.isDir || e.path.endsWith('/') || !inSel(e.path)) continue;
+    const parts = e.path.split('/').filter((s) => s && s !== '.' && s !== '..');
+    if (!parts.length) continue;
+    try { if (fs.existsSync(path.resolve(job.dest, ...parts))) out.push(e.path); } catch { /* 非法段跳过 */ }
+    if (out.length >= 50) break;
+  }
+  return out;
 }
 
 /** 提取单个文件到临时目录并返回其绝对路径(双击预览用) */
@@ -636,21 +669,27 @@ export async function extractSingleToTemp(archive: string, entry: string, passwo
   } catch (err) {
     const e = err as { stdout?: string; message?: string };
     const why = interpretFailure(2, (e.stdout ?? '') + (e.message ?? ''));
-    if (why.needsPassword) throw new EngineError('NEED_PASSWORD', '该文件需要密码。');
+    if (why.needsPassword) throw new EngineError(ERR.NEED_PASSWORD, '该文件需要密码。');
     throw new Error(why.message);
   }
   const direct = path.join(dest, entry.replace(/\//g, path.sep));
   if (fs.existsSync(direct)) return direct;
-  const walk = (d: string): string | null => {
+  /* 兜底遍历:收集全部落地文件,优先同名匹配(7z 对异常条目名可能改写入位置),
+     避免盲取第一个文件导致「双击打开 a.txt 实际打开 b.txt」的错拿 */
+  const want = path.basename(entry).toLowerCase();
+  const found: string[] = [];
+  const walk = (d: string) => {
     for (const f of fs.readdirSync(d, { withFileTypes: true })) {
       const fp = path.join(d, f.name);
-      if (f.isDirectory()) { const r = walk(fp); if (r) return r; } else return fp;
+      if (f.isDirectory()) walk(fp); else found.push(fp);
     }
-    return null;
   };
-  const first = walk(dest);
-  if (!first) throw new Error('提取失败:未找到目标文件。');
-  return first;
+  walk(dest);
+  const hit = found.find((f) => f.toLowerCase() === direct.toLowerCase())
+    ?? found.find((f) => path.basename(f).toLowerCase() === want)
+    ?? found[0];
+  if (!hit) throw new Error('提取失败:未找到目标文件。');
+  return hit;
 }
 
 /* ------------------------------------------------------------------ */
@@ -717,13 +756,16 @@ export async function runTest(archive: string, password: string | undefined, onP
   tasks.set(taskId, handle);
   emitStart(taskId, 'test', onProgress);
   const args = ['t', '-y'];
-  if (password) args.push(`-p${password}`);
+  if (password) args.push(`-p${password}`); // 密码仅能走 argv,见 compressArgs 内实测说明
   args.push(archive);
   (async () => {
     try {
       const r = await runStep(handle, taskId, 'test', args, onProgress);
       if (handle.cancelled) return finishCancel(taskId, 'test', onProgress);
-      if (r.code > 1) return emitError(taskId, 'test', onProgress, interpretFailure(r.code, r.stdout).message);
+      if (r.code > 1) {
+        const why = interpretFailure(r.code, r.stdout);
+        return emitError(taskId, 'test', onProgress, why.message, why.needsPassword ? ERR.NEED_PASSWORD : undefined);
+      }
       emitDone(taskId, 'test', onProgress, '压缩包完好。');
     } catch (err) {
       emitError(taskId, 'test', onProgress, (err as Error).message);

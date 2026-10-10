@@ -3,8 +3,8 @@
  */
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
-  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, FolderEntry,
-  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState,
+  AppAbout, ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
+  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState, UpdateCheck,
 } from '../shared/types';
 
 type Unsub = () => void;
@@ -19,7 +19,7 @@ const api = {
   scanArchives: (): Promise<IpcResult<ArchiveFile[]>> => ipcRenderer.invoke('tz:scan-archives'),
   compress: (job: CompressJob): Promise<IpcResult<{ taskId: string }>> =>
     ipcRenderer.invoke('tz:compress', job),
-  extract: (job: ExtractJob): Promise<IpcResult<{ taskId: string }>> =>
+  extract: (job: ExtractJob): Promise<IpcResult<ExtractStart>> =>
     ipcRenderer.invoke('tz:extract', job),
   test: (archive: string, password?: string): Promise<IpcResult<{ taskId: string }>> =>
     ipcRenderer.invoke('tz:test', { archive, password }),
@@ -58,6 +58,11 @@ const api = {
   shellUninstall: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:shell-uninstall'),
   shellRefresh: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:shell-refresh'),
   openDefaultApps: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:open-default-apps'),
+  setDefaultApp: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:shell-set-default'),
+
+  /* 关于页 */
+  aboutInfo: (): Promise<IpcResult<AppAbout>> => ipcRenderer.invoke('tz:about-info'),
+  checkUpdate: (): Promise<IpcResult<UpdateCheck>> => ipcRenderer.invoke('tz:check-update'),
 
   /* 窗口 */
   winMinimize: () => ipcRenderer.invoke('tz:win-minimize'),

@@ -9,8 +9,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { JobKind, ProgressEvent } from '@shared/types';
 import {
   IconClose, IconCompress, IconExtract, IconTest, IconDelete, IconFolderOpen, IconMax,
-  IconPause, IconPlay, IconReveal, IconStop, IconMore, IconMin, Logo,
+  IconPause, IconPlay, IconReveal, IconStop, IconMore, IconMin,
 } from './icons';
+import AppLogo from './AppLogo';
 import { ContextMenu, type CtxItem } from './ui';
 import { cn } from '@/lib/utils';
 
@@ -103,8 +104,8 @@ export default function TaskWindow() {
     <div className="flex h-screen select-none flex-col overflow-hidden bg-background text-foreground">
       {/* 迷你标题栏:拖拽区 + 当前任务状态标题 + 最小化/最大化/关闭(窗控 IPC 按 sender 定位) */}
       <header className="app-drag flex h-[38px] shrink-0 items-center gap-2 bg-secondary pl-3 text-[12.5px] font-semibold">
-        <span className="flex size-[18px] items-center justify-center rounded-[5px] bg-primary text-primary-foreground">
-          <Logo className="size-[11px]" />
+        <span className="flex size-[18px] shrink-0 items-center justify-center">
+          <AppLogo className="size-[18px]" />
         </span>
         {title}
         {running.length > 1 && (
@@ -126,7 +127,7 @@ export default function TaskWindow() {
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-4 pb-2 pt-3.5">
         {jobs.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center gap-2.5 text-muted-foreground">
-            <span className="grid size-10 place-items-center rounded-full bg-[var(--accent-soft)]"><Logo className="size-4 text-primary" /></span>
+            <AppLogo className="size-10" />
             <span className="text-[12px]">等待任务…</span>
           </div>
         )}

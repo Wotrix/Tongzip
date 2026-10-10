@@ -4,16 +4,17 @@
  */
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
-import type { AccentKey, ArchiveFormat, ContextMenuSettings, EngineInfo, Settings } from '@shared/types';
+import type { AccentKey, AppAbout, ArchiveFormat, ContextMenuSettings, EngineInfo, Settings, UpdateCheck } from '@shared/types';
 import { useToast } from '../components/ui';
 import { IconAuto, IconSun, IconMoon, IconWarn } from '../components/icons';
+import AppLogo from '../components/AppLogo';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
 import { Switch } from '../components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { cn } from '@/lib/utils';
 
-const TABS = ['通用', '压缩设置', '外观', '集成', '高级'] as const;
+const TABS = ['通用', '压缩设置', '外观', '集成', '高级', '关于'] as const;
 type Tab = typeof TABS[number];
 
 const ACCENTS: { v: AccentKey; label: string; color: string }[] = [
@@ -53,6 +54,11 @@ const CM_COMPRESS: [keyof ContextMenuSettings, string, string][] = [
   ['compressDialog', '压缩选项…', '打开对话框,可选格式/等级/密码'],
 ];
 
+/* —— 关于页常量:仓库名以远程 origin 为准,邮箱是对外唯一反馈地址 —— */
+const REPO_URL = 'https://github.com/Wotrix/Tongzip';
+const ISSUES_URL = `${REPO_URL}/issues`;
+const EMAIL = 'wotrix@foxmail.com';
+
 /* —— 设置页版式令牌(与最近文件/任务页同一套尺度) —— */
 const ROW_CLS = 'flex min-w-0 items-center justify-between gap-3';
 const ROW_LABEL_CLS = 'text-[12.5px] text-foreground';
@@ -88,6 +94,10 @@ export default function SettingsPage() {
   const [shellOn, setShellOn] = useState(false);
   const [engine, setEngine] = useState<EngineInfo | null>(null);
   const [engineErr, setEngineErr] = useState<string | null>(null);
+  const [about, setAbout] = useState<AppAbout | null>(null);
+  const [update, setUpdate] = useState<UpdateCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [updErr, setUpdErr] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -95,11 +105,15 @@ export default function SettingsPage() {
       setShellOn((await window.tz.shellStatus()).installed);
       const r = await window.tz.detectEngine();
       if (r.ok) setEngine(r.data); else setEngineErr(r.message);
+      const a = await window.tz.aboutInfo();
+      if (a.ok) setAbout(a.data);
     })();
   }, []);
 
   if (!s) return null;
   const patch = (p: Partial<Settings>) => {
+    /* 广播给 Shell:rememberPassword/dblClickAction 等开关需实时生效,不等重挂载 */
+    window.dispatchEvent(new CustomEvent('tz:settings-patched', { detail: p }));
     void window.tz.setSettings(p).then((v) => {
       setS(v);
       if (p.accent) {
@@ -136,6 +150,41 @@ export default function SettingsPage() {
     if (!r.ok) toast(r.message, 'err');
     else toast('在「默认应用」页选中 TongZip,再将压缩包扩展名指定为它');
   };
+
+  /** 一键设为默认:先把 TongZip 登记进系统可选应用,再跳到默认应用页供用户确认 */
+  const setAsDefault = async () => {
+    const r = await window.tz.setDefaultApp();
+    if (!r.ok) { toast(r.message, 'err'); return; }
+    toast('已登记 TongZip,在弹出的「默认应用」页把压缩包格式选为它即可');
+  };
+
+  /** 打开外部链接/邮件:主进程白名单仅 http/https/mailto */
+  const openLink = async (url: string) => {
+    const r = await window.tz.openExternal(url);
+    if (!r.ok) toast(r.message, 'err');
+  };
+
+  const doCheckUpdate = async () => {
+    setChecking(true); setUpdErr(null); setUpdate(null);
+    const r = await window.tz.checkUpdate();
+    setChecking(false);
+    if (r.ok) { setUpdate(r.data); if (r.data.status === 'available') toast(`发现新版本 v${r.data.latest}`, 'ok'); }
+    else setUpdErr(r.message);
+  };
+
+  /** 反馈邮件预填版本与运行时信息,减少一轮往返追问 */
+  const sendMail = () => {
+    const body = encodeURIComponent(
+      `TongZip v${about?.version ?? '?'} · Electron ${about?.electron ?? '?'} · Windows\n\n请描述你遇到的问题:\n`,
+    );
+    void openLink(`mailto:${EMAIL}?subject=${encodeURIComponent('TongZip 反馈')}&body=${body}`);
+  };
+
+  /** 检查更新结果的一行文案(按钮下方状态位) */
+  const updateHint = checking ? '正在连接 GitHub…'
+    : updErr ?? (update?.status === 'available' ? `发现新版本 v${update.latest},下载前请核对发布说明`
+      : update?.status === 'latest' ? `已是最新版本${update.latest ? ` (v${update.latest})` : ''}`
+        : update?.status === 'notfound' ? '发布页还没有正式版本' : '未检查');
 
   return (
     <div className="min-h-0 flex-1 overflow-auto px-8 pt-[26px] pb-12">
@@ -269,12 +318,12 @@ export default function SettingsPage() {
           <div className={GROUP_CLS}>
             <div className={GROUP_LABEL_CLS}>默认应用</div>
             <div className="note mb-2">
-              Windows 限制第三方应用不能静默改默认关联。打开系统设置后选中 TongZip,
-              把 .7z/.zip 等压缩包指定为它,双击即可直接浏览。
-              下方「加入打开方式」开关会先把 TongZip 注册进可选列表。
+              Windows 限制第三方应用不能静默改默认关联。点「设为默认」会把 TongZip 登记进系统可选应用
+              并打开设置页,把 .7z/.zip 等压缩包选为它,之后双击即可直接浏览。
             </div>
-            <div>
-              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={() => void openDefaultApps()}>打开系统「默认应用」设置</Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" className="h-[27px] px-[11px] text-xs" onClick={() => void setAsDefault()}>设为默认压缩包程序</Button>
+              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={() => void openDefaultApps()}>仅打开系统设置</Button>
             </div>
           </div>
 
@@ -339,6 +388,83 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="note">存储位置:%APPDATA% 下的 tongzip-settings.json,不写注册表(右键菜单除外)。</div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="关于" className={BODY_CLS}>
+          {/* 品牌头部:位图 logo + 版本号胶囊,沿用首页「轻若竹风」主张 */}
+          <div className="flex items-center gap-4 pb-1">
+            <AppLogo className="size-[56px]" />
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[17px] font-bold leading-tight">TongZip</span>
+                <span className="rounded-full bg-primary/10 px-2 py-[1.5px] text-[11px] font-semibold text-primary">
+                  v{about?.version ?? '—'}
+                </span>
+              </div>
+              <div className="mt-[3px] text-[12px] text-muted-foreground">轻若竹风,简胜于形。</div>
+            </div>
+          </div>
+
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>版本更新</div>
+            <div className={ROW_CLS}>
+              <div className="min-w-0">
+                <div className={ROW_LABEL_CLS}>当前版本 v{about?.version ?? '—'}</div>
+                <div className={ROW_SUB_CLS}>{updateHint}</div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {update?.status === 'available' && update.url && (
+                  <Button size="sm" className="h-[27px] px-[11px] text-xs" onClick={() => void openLink(update.url!)}>前往下载</Button>
+                )}
+                <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" disabled={checking} onClick={() => void doCheckUpdate()}>
+                  {checking ? '检查中…' : '检查更新'}
+                </Button>
+              </div>
+            </div>
+            <div className="note">更新经 GitHub Releases 发布;检查更新只访问 api.github.com 的版本号接口,不上传任何个人信息。</div>
+          </div>
+
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>支持与反馈</div>
+            <div className={ROW_CLS}>
+              <div className="min-w-0">
+                <div className={ROW_LABEL_CLS}>Bug 反馈</div>
+                <div className={ROW_SUB_CLS}>GitHub Issues 可跟进处理进度;涉及私密信息(路径/密码)请发邮件</div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={() => void openLink(ISSUES_URL)}>提 Issue</Button>
+                <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={sendMail}>发邮件</Button>
+              </div>
+            </div>
+            <div className={ROW_CLS}>
+              <div className="min-w-0">
+                <div className={ROW_LABEL_CLS}>作者</div>
+                <div className={ROW_SUB_CLS}>Wotrix · {EMAIL}</div>
+              </div>
+              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={() => void openLink(REPO_URL)}>GitHub 仓库</Button>
+            </div>
+          </div>
+
+          <div className={GROUP_CLS}>
+            <div className={GROUP_LABEL_CLS}>运行时与许可</div>
+            <div className={ROW_CLS}>
+              <div className="min-w-0">
+                <div className={ROW_SUB_CLS}>
+                  Electron {about?.electron ?? '—'} · Chromium {about?.chromium ?? '—'} · Node {about?.node ?? '—'}
+                </div>
+                <div className={ROW_SUB_CLS}>
+                  捆绑 7-Zip 引擎 (7za.exe) © 伊戈尔·帕夫洛维奇,遵循 GNU LGPL;
+                  Electron / React 等依赖遵循各自 MIT 许可。
+                </div>
+                <div className={ROW_SUB_CLS}>TongZip 本体为闭源软件,© 2026 Wotrix,保留所有权利。</div>
+              </div>
+              <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" onClick={async () => {
+                const text = `TongZip v${about?.version ?? '?'} / Electron ${about?.electron ?? '?'} / Chromium ${about?.chromium ?? '?'} / Node ${about?.node ?? '?'}`;
+                try { await navigator.clipboard.writeText(text); toast('诊断信息已复制,反馈时可直接粘贴'); }
+                catch { toast('复制失败,请手动记录版本号', 'err'); }
+              }}>复制诊断信息</Button>
+            </div>
           </div>
         </TabsContent>
       </Tabs>

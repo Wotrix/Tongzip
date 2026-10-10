@@ -112,6 +112,23 @@ export interface ExtractJob {
   extractToTemp?: boolean;
 }
 
+/** 解压启动结果:taskId=任务已启动;conflicts=ask 预检发现的已存在目标文件清单(上限 50 项) */
+export type ExtractStart = { taskId?: string; conflicts?: string[] };
+
+/** 错误码单一数据源:主进程 EngineError.code / 进度事件 ProgressEvent.code / 渲染层比对共用,
+ * 禁止再散落魔法字符串(字符串匹配用户可读 message 属于反模式) */
+export const ERR = {
+  NEED_PASSWORD: 'NEED_PASSWORD',
+  ENGINE_MISSING: 'ENGINE_MISSING',
+  LIST_FAILED: 'LIST_FAILED',
+  BAD_NAME: 'BAD_NAME',
+  EXISTS: 'EXISTS',
+  NO_OUTPUT: 'NO_OUTPUT',
+  BAD_URL: 'BAD_URL',
+  OPEN_FAILED: 'OPEN_FAILED',
+  NETWORK_FAILED: 'NETWORK_FAILED',
+} as const;
+
 /** 任务类型 */
 export type JobKind = 'compress' | 'extract' | 'test' | 'delete';
 
@@ -126,8 +143,10 @@ export interface ProgressEvent {
   /** 流式日志 */
   log?: string;
   status: 'running' | 'done' | 'error' | 'cancelled';
-  /** 错误信息或结果说明 */
+  /** 错误信息或结果说明(用户可读文案) */
   message?: string;
+  /** status=error 时的机读错误码(如 NEED_PASSWORD),渲染层据此分支重试而非匹配文案 */
+  code?: string;
 }
 
 /** 磁盘目录条目 — 应用内文件夹浏览的数据单元(路径统一正斜杠) */
@@ -155,6 +174,21 @@ export interface EngineInfo {
   path: string;
   version: string;
   source: 'bundled' | 'system' | 'manual';
+}
+
+/** 关于页:应用与运行时版本信息(主进程采集,渲染层不直接碰 process.versions) */
+export interface AppAbout {
+  version: string;
+  electron: string;
+  chromium: string;
+  node: string;
+}
+
+/** 检查更新结果:available=有新版 / latest=已最新 / notfound=发布页暂无版本 */
+export interface UpdateCheck {
+  status: 'available' | 'latest' | 'notfound';
+  latest?: string;
+  url?: string;
 }
 
 /** Shell 集成状态 */
@@ -218,10 +252,14 @@ export interface Settings {
   showRecentTasks: boolean;
   /** 左侧导航栏宽度(px),可拖 156–260,默认 156(取下限) */
   sidebarWidth: number;
+  /** 侧边栏被拖到最小后收起(留竖条恢复入口);与冷启动自动隐藏(sbHidden)是两回事 */
+  sidebarCollapsed: boolean;
   /** 目录树面板宽度(px),可拖 160–400,默认 160(取下限) */
   treeWidth: number;
   /** 浏览文件列表可拖列宽(px):缺省=该列按当前目录内容自适应收紧(尽量小且完整),拖过才定宽;双击回自适应 */
   listColumnWidths: { type?: number; size?: number; time?: number; name?: number };
+  /** 被拖到 0 而隐藏的列(名称列不可隐藏);表头右键菜单可恢复 */
+  hiddenColumns: string[];
 }
 
 /** 启动载荷:通过 argv 打开的初始目标 */

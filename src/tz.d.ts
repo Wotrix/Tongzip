@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
 import type {
-  ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, FolderEntry,
-  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState,
+  AppAbout, ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
+  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState, UpdateCheck,
 } from '@shared/types';
 
 declare global {
@@ -12,7 +12,7 @@ declare global {
       listArchive(archive: string, password?: string): Promise<IpcResult<ArchiveInfo>>;
       scanArchives(): Promise<IpcResult<ArchiveFile[]>>;
       compress(job: CompressJob): Promise<IpcResult<{ taskId: string }>>;
-      extract(job: ExtractJob): Promise<IpcResult<{ taskId: string }>>;
+      extract(job: ExtractJob): Promise<IpcResult<ExtractStart>>;
       test(archive: string, password?: string): Promise<IpcResult<{ taskId: string }>>;
       deleteEntries(archive: string, entries: string[]): Promise<IpcResult<{ taskId: string }>>;
       renameArchive(archive: string, newName: string): Promise<IpcResult<{ newPath: string }>>;
@@ -34,6 +34,9 @@ declare global {
       shellUninstall(): Promise<IpcResult<void>>;
       shellRefresh(): Promise<IpcResult<void>>;
       openDefaultApps(): Promise<IpcResult<void>>;
+      setDefaultApp(): Promise<IpcResult<void>>;
+      aboutInfo(): Promise<IpcResult<AppAbout>>;
+      checkUpdate(): Promise<IpcResult<UpdateCheck>>;
       winMinimize(): void;
       winMaximize(): void;
       winClose(): void;

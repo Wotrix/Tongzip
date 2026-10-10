@@ -2,9 +2,11 @@
  * 左侧导航栏 — shadcn 风:品牌块 · 主导航(active 染 primary 圆角 pill)· 底部版本号
  * 折叠态:宽/内边距/右边框一并过渡归零(注意 border 宽度计入 computed width,必须显式归零)
  * 宽度可拖(156–260,双击手柄回默认 156):拖动中用本地 dragW 避免每帧写设置,松手才 onResize 持久化
+ * 拖到最小(松手 <132px)不弹回原形,而是收起为 36px 竖条(collapsed):可点按唤回,也可继续右拖直接拉宽
  */
 import { useState } from 'react';
-import { Logo, IconHome, IconClock, IconArchive, IconTasks, IconSettings, IconFolderOpen } from './icons';
+import { IconHome, IconClock, IconArchive, IconTasks, IconSettings, IconFolderOpen, IconChevronRight } from './icons';
+import AppLogo from './AppLogo';
 import { cn } from '@/lib/utils';
 import { version as appVersion } from '../../package.json';
 
@@ -18,18 +20,24 @@ const NAV: { v: View; label: string; icon: typeof IconHome }[] = [
   { v: 'settings', label: '设置', icon: IconSettings },
 ];
 
-export default function Sidebar({ view, onNav, runningCount, activeArchive, hidden = false, width = 156, onResize }: {
+export default function Sidebar({ view, onNav, runningCount, activeArchive, hidden = false, collapsed = false, onExpand, width = 156, onResize, onCollapse }: {
   view: View;
   onNav: (v: View) => void;
   runningCount: number;
   /** 已打开的压缩包名:额外渲染一个「正在浏览」入口 */
   activeArchive: string | null;
-  /** 折叠态:宽度收 0,冷启动双击打开压缩包时默认隐藏,可由浏览工具栏唤回 */
+  /** 冷启动专注隐藏:宽度收 0(由浏览工具栏唤回);与 collapsed 同真时退化为竖条(保恢复入口) */
   hidden?: boolean;
+  /** 拖到最小后的收起态:36px 竖条 */
+  collapsed?: boolean;
+  /** 竖条点按唤回 */
+  onExpand?: () => void;
   /** 当前宽度(px),由 Shell 自设置持久化而来 */
   width?: number;
   /** 拖动结束/双击复位时提交新宽度(已由本组件 clamp 到 156–260) */
   onResize?: (w: number) => void;
+  /** 松手宽度低于收起阈值 */
+  onCollapse?: () => void;
 }) {
   const clampW = (w: number) => Math.min(260, Math.max(156, Math.round(w) || 156));
   /* 拖动中的临时宽度:null=未拖,用 props.width 单一真相 */
@@ -47,12 +55,46 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
       setDragW(null);
-      onResize?.(clampW(startW + ev.clientX - startX));
+      const raw = startW + ev.clientX - startX;
+      /* 拖到最小不弹回原形:低于阈值直接收起为竖条 */
+      if (raw < 132) onCollapse?.();
+      else onResize?.(clampW(raw));
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
   };
+  /* 收起态竖条:点按唤回,右缘手柄可直接拖宽——拖过阈值即恢复并落地新宽度,未达阈值松手仍收起 */
+  if (collapsed) {
+    const railDrag = (e: React.PointerEvent) => {
+      e.preventDefault();
+      const el = e.currentTarget as HTMLElement;
+      el.setPointerCapture(e.pointerId);
+      const startX = e.clientX;
+      const up = (ev: PointerEvent) => {
+        el.removeEventListener('pointerup', up);
+        el.removeEventListener('pointercancel', up);
+        const raw = 36 + ev.clientX - startX;
+        if (raw >= 132) { onExpand?.(); onResize?.(clampW(raw)); }
+      };
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+    };
+    return (
+      <nav className="relative flex w-9 shrink-0 flex-col items-center border-r border-border bg-secondary py-1.5">
+        <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
+          title="展开侧边栏 (Alt+B)" onClick={() => onExpand?.()}>
+          <IconChevronRight className="size-[15px]" />
+        </button>
+        <span
+          aria-hidden
+          title="拖拽唤回侧边栏"
+          onPointerDown={railDrag}
+          className="absolute inset-y-0 right-0 z-20 w-[9px] cursor-col-resize touch-none after:absolute after:inset-y-2 after:right-0 after:w-[2px] after:rounded-full after:bg-transparent after:transition-colors hover:after:bg-primary/40 active:after:bg-primary/60"
+        />
+      </nav>
+    );
+  }
   const shownW = hidden ? 0 : (dragW ?? width);
   return (
     <nav
@@ -69,7 +111,7 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
       {/* 右缘拖宽手柄:与列表列手柄同款视觉;hidden 态随 w-0 被 overflow 裁掉 */}
       <span
         aria-hidden
-        title="拖拽调整宽度 · 双击恢复默认"
+        title="拖拽调整宽度(拖到最小可收起) · 双击恢复默认"
         onPointerDown={startDrag}
         onDoubleClick={() => { if (!hidden) onResize?.(156); }}
         className={cn(
@@ -83,9 +125,7 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
           hidden && 'pointer-events-none opacity-0')}
         onDoubleClick={() => onNav('home')}
       >
-        <span className="flex size-[28px] shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Logo className="size-[17px]" />
-        </span>
+        <AppLogo className="size-[30px]" />
         <b className="font-bold tracking-[.01em]">TongZip</b>
       </div>
 

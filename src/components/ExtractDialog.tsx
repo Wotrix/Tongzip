@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { ExtractJob } from '@shared/types';
+import { ERR } from '@shared/types';
 import { Modal, useToast } from './ui';
 import { IconExtract } from './icons';
 import { basename, parentDir } from '../lib/format';
@@ -18,6 +19,8 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
   const [dest, setDest] = useState(() => `${parentDir(archive).replace(/\//g, '\\')}\\${basename(archive).replace(/(\.tar)?\.[^.]+$/i, '')}`);
   const [overwrite, setOverwrite] = useState<ExtractJob['overwrite']>('ask');
   const [busy, setBusy] = useState(false);
+  /* ask 预检发现的同名条目:非空时展示决策条,用户选完模式后重发 */
+  const [conflicts, setConflicts] = useState<string[] | null>(null);
   /* 条目落地重命名: entry → 新名;editing 为正在行内编辑的 entry */
   const [renames, setRenames] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
@@ -54,19 +57,26 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
     el.setSelectionRange(0, stemLen > 0 ? stemLen : el.value.length);
   };
 
-  const start = async (password?: string) => {
+  const start = async (password?: string, ov: ExtractJob['overwrite'] = overwrite) => {
     setBusy(true);
-    const job: ExtractJob = { archive, dest, entries, overwrite, password, renames: Object.keys(renames).length ? renames : undefined };
+    const job: ExtractJob = { archive, dest, entries, overwrite: ov, password, renames: Object.keys(renames).length ? renames : undefined };
     const r = await window.tz.extract(job);
     if (!r.ok) { setBusy(false); toast(r.message, 'err'); return; }
+    if (r.data.conflicts?.length) { setBusy(false); setConflicts(r.data.conflicts); return; }
+    if (!r.data.taskId) { setBusy(false); return; }
     // 路径登记:任务窗「打开位置」双钮数据源(目标夹=dest,源包=archive)
     void window.tz.taskPathSet(r.data.taskId, { archive, dest: dest.replace(/\\/g, '/') });
     api.trackTask(r.data.taskId, 'extract', async (j) => {
       setBusy(false);
       if (j.status === 'done') { toast(`已解压到 ${dest}`); onClose(); }
       else if (j.status === 'error') {
-        if (j.message === 'NEED_PASSWORD' || j.message?.includes('密码')) {
-          api.askPassword(archive, async (pw) => { await start(pw); return true; });
+        /* 机读码优先;includes 兜底兼容第三方引擎把密码错误写进自由文案的场景 */
+        if (j.code === ERR.NEED_PASSWORD || j.message?.includes('密码')) {
+          api.askPassword(archive, async (pw) => {
+            api.cachePassword(archive, pw); // 记住密码开启时,重试成功后缓存到会话
+            await start(pw, ov);
+            return true;
+          });
         } else toast(j.message ?? '解压失败', 'err');
       }
     }, { label: basename(archive), path: archive, totalBytes });
@@ -124,6 +134,16 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
                 {renames[e] && <em className="chip-mark">✎</em>}
               </span>
             ))}
+          </div>
+        )}
+        {conflicts && (
+          <div className="field">
+            <label>目标已存在 {conflicts.length} 个同名文件,请选择处理方式</label>
+            <div className="seg">
+              {([['overwrite', '覆盖'], ['skip', '跳过已有'], ['rename', '自动重命名']] as const).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => { setConflicts(null); void start(api.lastPassword(archive), v); }}>{label}</button>
+              ))}
+            </div>
           </div>
         )}
         <div className="foot">
