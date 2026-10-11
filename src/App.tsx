@@ -89,8 +89,8 @@ function Shell() {
   const rememberPw = useRef(false);
   /* 双击/外部打开压缩包的动作(设置页 dblClickAction) */
   const [dblAction, setDblAction] = useState<Settings['dblClickAction']>('open');
-  /* 侧边栏:仅冷启动双击压缩包打开软件时自动隐藏(移交/应用内打开不动);手动开关过一次则尊重其选择;宽度可拖 156–260,默认取下限 156 并持久化;
-     拖到最小不弹回而是收起为竖条(sbCollapsed,持久化),与专注隐藏(sbHidden)独立 */
+  /* 侧边栏:仅冷启动双击压缩包打开软件时自动隐藏(移交/应用内打开不动);手动开关过一次则尊重其选择;宽度可自由拖 76–480(越界橡皮筋阻尼),默认 156 并持久化;
+     拖到贴近竖条才收起为竖条(sbCollapsed,持久化),与专注隐藏(sbHidden)独立 */
   const [sbHidden, setSbHidden] = useState(false);
   const [sbCollapsed, setSbCollapsed] = useState(false);
   const [sbW, setSbW] = useState(156);
@@ -495,7 +495,7 @@ function Shell() {
 
       <div className="main-col">
         {/* 侧栏隐藏的浏览视图:顶栏标题位补显示当前压缩包名(竞品标题栏形态,无菜单栏) */}
-        <TopBar archiveLabel={sbHidden && view === 'browse' && activeTab ? basename(activeTab.archive || activeTab.dir || '') : null} />
+        <TopBar archiveLabel={sbHidden && view === 'browse' && activeTab ? basename(activeTab.archive || activeTab.dir || '') : null} openArchive={(p) => void openInTab(p)} />
         {engineWarn && (
           <div className="flex flex-none items-center gap-[9px] border-b border-border bg-[var(--warn-soft)] px-4 py-2 text-[12.5px] text-foreground">
             <IconWarn className="size-[15px] shrink-0 text-[color:var(--warn)]" />
@@ -505,6 +505,7 @@ function Shell() {
           </div>
         )}
 
+        <div className="content-panel">
         {view === 'browse' && tabs.length > 0 ? (
           <>
             <TabBar tabs={tabs} activeId={activeId}
@@ -541,10 +542,11 @@ function Shell() {
             onNew={() => setCompress({ sources: [] })}
           />
         ) : view === 'tasks' ? (
-          <TasksPage />
+          <TasksPage openArchive={(p) => void openInTab(p)} />
         ) : (
           <SettingsPage />
         )}
+        </div>
       </div>
 
       {glow && <div className="drop-glow">松手开始 — 压缩包将打开,文件将压缩</div>}

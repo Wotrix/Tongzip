@@ -5,7 +5,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ArchiveFormat, CompressJob } from '@shared/types';
-import { Modal, useToast } from './ui';
+import { Modal, useToast, useModalClose } from './ui';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { IconArchive, IconAdd, IconChevronDown, IconClose, IconFolder, IconWarn } from './icons';
 import { FORMAT_EXT, SAVE_FILTERS, basename, parentDir } from '../lib/format';
 import type { AppApi } from '../App';
@@ -48,6 +49,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
   onClose: () => void;
 }) {
   const toast = useToast();
+  const close = useModalClose();
   const appendFormat: ArchiveFormat | null = appendTo
     ? (/\.zip$/i.test(appendTo) ? 'zip' : /\.7z$/i.test(appendTo) ? '7z' : null)
     : null;
@@ -151,7 +153,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
         if (j.status === 'done') {
           toast(appendTo ? `已添加到 ${basename(output)}` : `已生成 ${basename(output)}`);
           if (appendTo) api.refreshArchive();
-          onClose();
+          close();
         } else if (j.status === 'error') {
           toast(j.message ?? '压缩失败', 'err');
         }
@@ -217,9 +219,10 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
             </div>
             <div className="field">
               <label>格式</label>
-              <select className="input" value={format} onChange={(e) => setFormat(e.target.value as ArchiveFormat)}>
-                {FORMATS.map((f) => <option key={f.v} value={f.v}>{f.label} — {f.hint}</option>)}
-              </select>
+              <Select value={format} onValueChange={(v) => setFormat(v as ArchiveFormat)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{FORMATS.map((f) => <SelectItem key={f.v} value={f.v}>{f.label} — {f.hint}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
           </div>
         )}
@@ -249,10 +252,11 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
             </div>
             <div className="field">
               <label>压缩等级</label>
-              <select className="input" value={level} disabled={format === 'tar'}
-                onChange={(e) => { levelTouched.current = true; setLevel(Number(e.target.value)); }}>
-                {LEVELS.map((l) => <option key={l.v} value={l.v}>{l.label}</option>)}
-              </select>
+              <Select value={String(level)} disabled={format === 'tar'}
+                onValueChange={(v) => { levelTouched.current = true; setLevel(Number(v)); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{LEVELS.map((l) => <SelectItem key={l.v} value={String(l.v)}>{l.label}</SelectItem>)}</SelectContent>
+              </Select>
               {allPre && (
                 <div className="note pre-note">
                   <IconWarn />
@@ -302,15 +306,17 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
               <div className="grid2">
                 <div className="field">
                   <label>字典大小(仅 7Z)</label>
-                  <select className="input" value={dict} disabled={!is7z} onChange={(e) => setDict(e.target.value)}>
-                    {DICTS.map((d) => <option key={d} value={d}>{d.toUpperCase()}</option>)}
-                  </select>
+                  <Select value={dict} disabled={!is7z} onValueChange={setDict}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{DICTS.map((d) => <SelectItem key={d} value={d}>{d.toUpperCase()}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
                 <div className="field">
                   <label>固实归档(仅 7Z)</label>
-                  <select className="input" value={solid} disabled={!is7z} onChange={(e) => setSolid(e.target.value)}>
-                    {SOLIDS.map((s) => <option key={s} value={s}>{s === 'auto' ? '自动' : s === 'on' ? '开启' : s === 'off' ? '关闭' : s.toUpperCase()}</option>)}
-                  </select>
+                  <Select value={solid} disabled={!is7z} onValueChange={setSolid}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{SOLIDS.map((s) => <SelectItem key={s} value={s}>{s === 'auto' ? '自动' : s === 'on' ? '开启' : s === 'off' ? '关闭' : s.toUpperCase()}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="rowline">
@@ -334,7 +340,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
         </div>
 
         <div className="foot">
-          <button type="button" className="tbtn" onClick={onClose} disabled={busy}>取消</button>
+          <button type="button" className="tbtn" onClick={close} disabled={busy}>取消</button>
           <button type="button" className="tbtn primary" onClick={() => void start()} disabled={busy || !items.length || !output}>
             {busy ? '进行中…' : appendTo ? '添加到压缩包' : '创建压缩包'}
           </button>

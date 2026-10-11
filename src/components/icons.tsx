@@ -1,10 +1,10 @@
 /** TongZip 图标集 — lucide-react 再导出(保留旧导出名,统一 16px/stroke 1.75 视觉重量)
  *  尺寸策略:lucide 自带 width/height 属性,旧 app.css `.xxx svg{width:..}` 仍可覆盖,迁移期两栈都不破 */
 import {
-  Archive, Bell, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Code, Copy,
-  Eye, ExternalLink, File, FileText, Folder, FolderDown, FolderOpen, FolderTree, FolderUp,
+  AppWindow, Archive, Bell, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Code, Copy,
+  Disc3, Eye, ExternalLink, File, FileAudio, FileVideo, FileSpreadsheet, FileText, FileType, Folder, FolderDown, FolderOpen, FolderTree, FolderUp,
   Home, Image, ListChecks, Lock, Minus, Monitor, Moon, MoreHorizontal, OctagonX, PanelLeft, PanelRight,
-  Pause, Pencil, Pin, PinOff, Play, Plus, RefreshCw, Search, Settings, Shrink, SlidersHorizontal, Square, Sun,
+  Pause, Pencil, Pin, PinOff, Play, Plus, Presentation, RefreshCw, Search, Settings, Shrink, SlidersHorizontal, Square, Sun,
   Trash2, TriangleAlert, LoaderCircle, X,
   type LucideIcon,
 } from 'lucide-react';
@@ -111,6 +111,24 @@ export const IconMore = mk(MoreHorizontal);
 export const IconCode = mk(Code);
 /** 图片类文件 */
 export const IconImage = mk(Image);
+/** 文档类文件(pdf/word/文本共用形,靠色区分) */
+export const IconFileText = mk(FileText);
+/** 音频文件 */
+export const IconFileAudio = mk(FileAudio);
+/** 视频文件 */
+export const IconFileVideo = mk(FileVideo);
+/** 表格文件 */
+export const IconSheet = mk(FileSpreadsheet);
+/** 演示文稿 */
+export const IconSlide = mk(Presentation);
+/** 电子书 */
+export const IconBook = mk(BookOpen);
+/** 可执行/安装包 */
+export const IconApp = mk(AppWindow);
+/** 字体文件 */
+export const IconFont = mk(FileType);
+/** 光盘/镜像文件 */
+export const IconDisc = mk(Disc3);
 /** 停止任务(Bandizip 式红叉钮) */
 export const IconStop = mk(OctagonX);
 /** 窗口置顶(图钉) */

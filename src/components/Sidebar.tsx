@@ -2,13 +2,14 @@
  * 左侧导航栏 — shadcn 风:品牌块 · 主导航(active 染 primary 圆角 pill)· 底部版本号
  * 折叠态:宽/内边距/右边框一并过渡归零(注意 border 宽度计入 computed width,必须显式归零)
  * 宽度可自由拖动(SB_MIN–SB_MAX,双击手柄回默认 SB_DEFAULT 156):
- *   拖动中本地 dragW 每帧跟手(实时变宽,不弹回、不钳成下限),松手才 onResize 持久化
- * 拖到最小(松手 <SB_MIN=132px)不弹回原形,而是收起为 36px 竖条(collapsed):可点按唤回,
- *   也可从竖条手柄继续拖——拖程中实时预览面板宽度,拖过 96px 即拉回完整侧栏
- * 手柄:12px 命中区 + 常驻可见分隔线(hover/拖动染品牌色),不再只在 hover 才显形
+ *   拖动中本地 dragW 每帧跟手(实时变宽,越界走橡皮筋阻尼,不撞墙卡死),松手才 onResize 持久化
+ * 拖到接近竖条(松手 <SB_MIN=76px)才收起为 36px 竖条(collapsed):可点按唤回,
+ *   也可从竖条手柄继续拖——拖程中实时预览面板宽度,拖过 96px 即拉回完整侧栏;
+ *   76–132 之间的窄宽度允许停住(标签自然截断),不再一刀切收起
+ * 手柄:12px 隐形命中区(cursor-col-resize),平时无线(扁平无描边),仅拖拽中显品牌色细线作反馈
  */
 import { useRef } from 'react';
-import { IconHome, IconClock, IconArchive, IconTasks, IconSettings, IconFolderOpen, IconChevronRight } from './icons';
+import { IconHome, IconClock, IconArchive, IconTasks, IconSettings, IconFolderOpen, IconChevronRight, IconSidebar } from './icons';
 import AppLogo from './AppLogo';
 import { PanelHandle, usePanelDrag } from './ui';
 import { cn } from '@/lib/utils';
@@ -24,9 +25,9 @@ const NAV: { v: View; label: string; icon: typeof IconHome }[] = [
   { v: 'settings', label: '设置', icon: IconSettings },
 ];
 
-/** 可拖宽度:默认/双击复位值(取下限档)、下限=收起阈值、上限给足自由拖的空间(旧 260 太局促) */
+/** 可拖宽度:默认/双击复位值、持久化下限(也即收起判定线:拖到贴近竖条才收起)、上限给足自由拖的空间 */
 export const SB_DEFAULT = 156;
-export const SB_MIN = 132;
+export const SB_MIN = 76;
 export const SB_MAX = 480;
 /** 收起态竖条宽 */
 const RAIL_W = 36;
@@ -73,44 +74,44 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
   const shownW = dragW ?? width;
   const startPanel = (e: React.PointerEvent) => { if (hidden) return; fromRail.current = false; start(e); };
   const startRail = (e: React.PointerEvent) => { fromRail.current = true; start(e); };
-  /* 收起态:未拖或还没拖过预览门槛时只显示 36px 竖条;拖过门槛则落到下方面板实时预览宽度 */
-  if (collapsed && (!dragging || shownW < PULL_BACK_W)) {
-    return (
-      <nav className="relative flex w-9 shrink-0 flex-col items-center border-r border-border bg-secondary py-1.5">
-        <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]"
-          title="展开侧边栏 (Alt+B)" onClick={() => onExpand?.()}>
-          <IconChevronRight className="size-[15px]" />
-        </button>
-        <PanelHandle title="拖拽唤回侧边栏 · 双击展开" onPointerDown={startRail} onDoubleClick={() => onExpand?.()} live={dragging} />
-      </nav>
-    );
-  }
+  /* 统一为单个 nav:宽度在「面板 ↔ 36px 竖条」间走同一条 transition,收起/展开顺滑滑动;
+     窄于预览门槛(且收起态)时内容淡出、居中显出展开把手 */
+  const targetW = dragging ? shownW : collapsed ? RAIL_W : width;
+  const w = hidden ? 0 : targetW;
+  const showRail = collapsed && (dragging ? shownW < PULL_BACK_W : true);
+  const fade = (hidden || showRail) && 'pointer-events-none opacity-0';
   return (
     <nav
       className={cn(
-        'relative flex shrink-0 flex-col gap-2.5 overflow-hidden border-border bg-secondary',
-        'border-r px-2 pt-2.5 pb-2',
-        /* 拖动中关掉宽度过渡,手柄才跟手;折叠动画仍走 transition */
-        !dragging && 'transition-[width,padding,border-right-width] duration-150 ease-out',
+        'relative flex shrink-0 flex-col gap-2.5 overflow-hidden bg-secondary',
+        'px-2 pt-2.5 pb-2',
+        /* 拖动中关过渡让手柄实时跟手;收起/展开/双击复位走丝滑宽度过渡(crisp easeOutQuint) */
+        !dragging && 'transition-[width,padding] duration-[220ms] ease-[cubic-bezier(.32,.72,0,1)]',
         dragging && 'select-none',
-        hidden && 'pointer-events-none border-r-0 px-0',
+        hidden && 'px-0',
       )}
-      style={{ width: hidden ? 0 : shownW }}
+      style={{ width: w }}
     >
-      {/* 右缘拖宽手柄:常驻可见把手 + 12px 命中区;hidden 态随 w-0 被 overflow 裁掉 */}
-      <PanelHandle onPointerDown={startPanel} live={dragging}
-        onDoubleClick={() => { if (!hidden) onResize?.(SB_DEFAULT); }} />
-      <div
-        className={cn('flex items-center gap-2.5 px-1.5 pt-0.5 text-[14.5px] transition-opacity duration-100',
-          hidden && 'pointer-events-none opacity-0')}
-        onDoubleClick={() => onNav('home')}
-      >
-        <AppLogo className="size-[30px]" />
-        <b className="font-bold tracking-[.01em]">TongZip</b>
+      {/* 右缘拖宽手柄:竖条态起拖基准=36,面板态=当前宽;双击:竖条展开、面板复位默认 */}
+      <PanelHandle onPointerDown={showRail ? startRail : startPanel} live={dragging}
+        onDoubleClick={() => (collapsed ? onExpand?.() : onResize?.(SB_DEFAULT))} />
+      {/* 竖条展开把手:绝对居中,仅 showRail 时淡入可点 */}
+      <button type="button" onClick={() => onExpand?.()} title="展开侧边栏 (Alt+B)"
+        className={cn('absolute left-1/2 top-1.5 z-10 grid size-6 -translate-x-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]',
+          showRail ? 'opacity-100' : 'pointer-events-none opacity-0')}>
+        <IconChevronRight className="size-[15px]" />
+      </button>
+      {/* 品牌位:logo 悬停直接切换为「侧边栏」图标,点击即收起(无淡入淡出) */}
+      <div className={cn('px-1.5 pt-0.5 transition-opacity duration-150', fade)}>
+        <button type="button" onClick={() => onCollapse?.()} onDoubleClick={() => onNav('home')}
+          title="收起侧边栏"
+          className="group relative grid size-[30px] place-items-center rounded-[9px]">
+          <AppLogo className="size-[30px] group-hover:opacity-0" />
+          <IconSidebar className="absolute size-[17px] text-muted-foreground opacity-0 group-hover:opacity-100" />
+        </button>
       </div>
 
-      <div className={cn('flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto transition-opacity duration-100',
-        hidden && 'pointer-events-none opacity-0')}>
+      <div className={cn('flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto transition-opacity duration-150', fade)}>
         {NAV.map(({ v, label, icon: Ico }) => (
           <button key={v} onClick={() => onNav(v)}
             className={cn(
@@ -139,9 +140,10 @@ export default function Sidebar({ view, onNav, runningCount, activeArchive, hidd
         )}
       </div>
 
-      <div className={cn('text-center text-[11px] tracking-[.12em] text-muted-foreground transition-opacity duration-100',
-        hidden && 'pointer-events-none opacity-0')}>
-        v{appVersion}
+      {/* 品牌名与版本号同行显示于底部左侧 */}
+      <div className={cn('flex items-baseline gap-1.5 px-2.5 pb-0.5 transition-opacity duration-150', fade)}>
+        <b className="text-[13.5px] font-bold tracking-[.01em] text-foreground">TongZip</b>
+        <span className="text-[11px] tracking-[.06em] text-muted-foreground">v{appVersion}</span>
       </div>
     </nav>
   );

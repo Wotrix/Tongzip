@@ -27,7 +27,6 @@ async function regQuiet(...args: string[]): Promise<void> {
 }
 
 const ROOT = 'HKCU\\Software\\Classes';
-const PROGID = 'TongZip.Archive';
 /** 必须与 main.ts 的 app.setAppUserModelId 一致:Windows 按此 ID 反查应用显示名/图标,
  *  不绑定时「默认应用」页/任务管理器会回落到 electron.exe 的「Electron」身份 */
 const AUMID = 'com.tongzip.app';
@@ -37,6 +36,20 @@ const EXTS: string[] = ARCHIVE_EXTS.map((e) => `.${e}`);
 /** 「打开方式」兜底与双击默认只覆盖自带 7za 真能打开的格式(rar/zst/iso 等不抢) */
 const EXTS_OPENABLE: string[] = ARCHIVE_EXTS_OPENABLE.map((e) => `.${e}`);
 const SYS_ONLY_EXTS: string[] = ARCHIVE_EXTS_SYS_ONLY.map((e) => `.${e}`);
+
+/** 扩展名 → 展示标签(首字母大写),用于按后缀区分的类型描述(zip→Zip, 7z→7z) */
+function extLabel(ext: string): string {
+  const b = ext.replace(/^\./, '');
+  return b.charAt(0).toUpperCase() + b.slice(1);
+}
+/** 每个后缀独立 ProgID,使「打开方式/文件类型」描述能按后缀区分(而非共用一个「压缩包」) */
+function progidFor(ext: string): string {
+  return `TongZip.${ext.replace(/^\./, '')}`;
+}
+/** 按后缀的类型描述文案,如「TongZip Zip文件」 */
+function typeDesc(ext: string): string {
+  return `TongZip ${extLabel(ext)}文件`;
+}
 
 /**
  * 启动器前缀(不含 %1,由各菜单项自行拼参数)。
@@ -85,12 +98,15 @@ function extractItems(o: ContextMenuSettings): ItemDef[] {
  * 结构铁律:每个菜单项是独立子键 shell\TongZip\<ItemKey>,
  *   子键默认值/MUIVerb = 显示名,子键\command 默认值 = 命令行。
  *   (写成 command\<label> 是无效结构,资源管理器不会渲染任何项)
+ * 父键必须带 SubCommands(REG_SZ, 可空):Windows 11 新式菜单据此判定「这是子菜单」,
+ *   缺省则即便子项齐全也会被折叠成单个叶子项(与系统内置「校验文件 Hash」同构)。
  * MultipleExtensions + %V 让多选文件时一次唤起;items 为空则整个不建。
  */
 async function writeMenu(base: string, items: ItemDef[], cmd0: string): Promise<void> {
   if (!items.length) return;
   await reg('add', base, '/v', 'MUIVerb', '/d', 'TongZip', '/f');
   await reg('add', base, '/v', 'Icon', '/d', appIcon(), '/f');
+  await reg('add', base, '/v', 'SubCommands', '/t', 'REG_SZ', '/d', '', '/f');
   await reg('add', base, '/v', 'MultipleExtensions', '/t', 'REG_SZ', '/d', '', '/f');
   for (const i of items) {
     const dir = `${base}\\${i.key}`;
@@ -99,6 +115,17 @@ async function writeMenu(base: string, items: ItemDef[], cmd0: string): Promise<
     /* Shift 右键(扩展命令)时 %V 展开为全部选中项 */
     await reg('add', dir, '/v', 'ExtendedCommandLine', '/d', `${cmd0} ${i.args.replace('%1', '%V')}`, '/f');
   }
+}
+
+/** 登记单个后缀的 ProgID:类型描述按后缀区分 + 图标 + 打开命令 + 绑定 AUMID */
+async function writeProgid(ext: string, cmd0: string): Promise<void> {
+  const p = `${ROOT}\\${progidFor(ext)}`;
+  const d = typeDesc(ext);
+  await reg('add', p, '/v', '', '/d', d, '/f');                    // ProgID 默认值 = 文件类型描述
+  await reg('add', p, '/v', 'FriendlyTypeName', '/d', d, '/f');    // 「打开方式」条目副标题按后缀区分
+  await reg('add', p, '/v', 'AppUserModelID', '/d', AUMID, '/f');  // 绑应用身份,取 TongZip 名与图标
+  await reg('add', `${p}\\DefaultIcon`, '/v', '', '/d', `"${iconAsset('archive.ico')}"`, '/f');
+  await reg('add', `${p}\\shell\\open\\command`, '/v', '', '/d', `${cmd0} --open "%1"`, '/f');
 }
 
 export async function installShell(o: ContextMenuSettings): Promise<void> {
@@ -116,7 +143,7 @@ export async function installShell(o: ContextMenuSettings): Promise<void> {
   for (const e of EXTS) {
     await writeMenu(`${ROOT}\\${e}\\shell\\TongZip`, eItems, cmd0);
     if (o.openWith) {
-      await reg('add', `${ROOT}\\${e}\\OpenWithProgids`, '/v', PROGID, '/t', 'REG_NONE', '/f');
+      await reg('add', `${ROOT}\\${e}\\OpenWithProgids`, '/v', progidFor(e), '/t', 'REG_NONE', '/f');
     }
   }
   /* 压缩包专属图标无条件写入:文件类型图标是品牌呈现,不该被「打开方式」开关连坐;
@@ -131,14 +158,9 @@ export async function installShell(o: ContextMenuSettings): Promise<void> {
     }
   }
 
-  /* 「打开方式」里显示的应用条目 */
+  /* 「打开方式」里显示的应用条目:按后缀独立 ProgID,描述随后缀区分(如「TongZip Zip文件」) */
   if (o.openWith) {
-    const p = `${ROOT}\\${PROGID}`;
-    await reg('add', p, '/v', 'FriendlyTypeName', '/d', 'TongZip 压缩包', '/f');
-    await reg('add', p, '/v', 'ApplicationName', '/d', 'TongZip', '/f');
-    await reg('add', p, '/v', 'ApplicationDescription', '/d', 'TongZip 压缩包打开/解压', '/f');
-    await reg('add', `${p}\\DefaultIcon`, '/v', '', '/d', `"${iconAsset('archive.ico')}"`, '/f');
-    await reg('add', `${p}\\shell\\open\\command`, '/v', '', '/d', `${cmd0} --open "%1"`, '/f');
+    for (const e of EXTS_OPENABLE) await writeProgid(e, cmd0);
     await writeAppIdentity();
   }
   await refreshIconCache(); // 菜单/文件图标变更后立即刷新 Explorer 图标缓存
@@ -163,7 +185,7 @@ export async function uninstallShell(keepDefaultApps = false): Promise<void> {
   const cmd0 = launcher();
   for (const e of EXTS) {
     await regQuiet('delete', `${ROOT}\\${e}\\shell\\TongZip`, '/f');
-    await regQuiet('delete', `${ROOT}\\${e}\\OpenWithProgids`, '/v', PROGID, '/f');
+    await regQuiet('delete', `${ROOT}\\${e}\\OpenWithProgids`, '/v', progidFor(e), '/f');
   }
   for (const e of EXTS_OPENABLE) {
     await deleteOpenIfOurs(e, cmd0);
@@ -175,7 +197,11 @@ export async function uninstallShell(keepDefaultApps = false): Promise<void> {
   for (const e of EXTS_OPENABLE) {
     await regQuiet('delete', `${ROOT}\\${e}\\DefaultIcon`, '/ve');
   }
-  await regQuiet('delete', `${ROOT}\\${PROGID}`, '/f');
+  /* 删除按后缀独立 ProgID(含历史共用的单 ProgID) */
+  for (const e of EXTS) {
+    await regQuiet('delete', `${ROOT}\\${progidFor(e)}`, '/f');
+  }
+  await regQuiet('delete', `${ROOT}\\TongZip.Archive`, '/f');
   if (!keepDefaultApps) {
     await unregisterDefaultAppCapabilities(); // 真正卸载时同步撤销「默认应用」登记,避免设置里残留死条目
     await regQuiet('delete', `${ROOT}\\AppUserModelID\\${AUMID}`, '/f');
@@ -193,15 +219,15 @@ async function refreshIconCache(): Promise<void> {
 }
 
 /**
- * 应用身份登记:ProgID 绑定 AUMID + 在 Classes\AppUserModelID 下登记显示名。
- * 没有这两笔时,「设置▸默认应用」页与任务栏会把我们显示成宿主 exe 的「Electron」;
- * 登记后 Windows 按 AUMID 反查名称,图标优先用 ProgID 的 DefaultIcon。
+ * 应用身份登记:在 Classes\AppUserModelID 下登记显示名与图标。
+ * 缺省时「设置▸默认应用」/「打开方式」与任务栏会回落显示成宿主 exe 的「Electron」名与地球图标;
+ * 补上 Icon 后,应用条目改用 TongZip 图标(打包=exe 自带 icon.ico,开发期=build/icon.ico)。
+ * (各后缀 ProgID 已在 writeProgid 内绑定 AppUserModelID)
  */
 async function writeAppIdentity(): Promise<void> {
-  const p = `${ROOT}\\${PROGID}`;
-  await reg('add', p, '/v', 'ApplicationCompany', '/d', 'TongZip', '/f');
-  await reg('add', p, '/v', 'AppUserModelID', '/d', AUMID, '/f');
-  await reg('add', `${ROOT}\\AppUserModelID\\${AUMID}`, '/v', '', '/d', 'TongZip', '/f');
+  const k = `${ROOT}\\AppUserModelID\\${AUMID}`;
+  await reg('add', k, '/v', '', '/d', 'TongZip', '/f');
+  await reg('add', k, '/v', 'Icon', '/d', appIcon(), '/f');
 }
 
 /**
@@ -213,18 +239,15 @@ async function writeAppIdentity(): Promise<void> {
  */
 export async function registerDefaultAppCapabilities(): Promise<void> {
   const cmd0 = launcher();
-  const p = `${ROOT}\\${PROGID}`;
-  await reg('add', p, '/v', 'FriendlyTypeName', '/d', 'TongZip 压缩包', '/f');
-  await reg('add', p, '/v', 'ApplicationName', '/d', 'TongZip', '/f');
-  await reg('add', `${p}\\DefaultIcon`, '/v', '', '/d', `"${iconAsset('archive.ico')}"`, '/f');
-  await reg('add', `${p}\\shell\\open\\command`, '/v', '', '/d', `${cmd0} --open "%1"`, '/f');
-  await writeAppIdentity(); // 绑 AUMID,否则默认应用页里显示成「Electron」
+  /* 按后缀独立 ProgID,默认应用页里每个类型显示「TongZip Xx文件」 */
+  for (const e of EXTS_OPENABLE) await writeProgid(e, cmd0);
+  await writeAppIdentity(); // 绑 AUMID + 图标,否则默认应用页里显示成「Electron」
   const cap = 'HKCU\\Software\\TongZip\\Capabilities';
   await reg('add', cap, '/v', 'ApplicationName', '/d', 'TongZip', '/f');
   await reg('add', cap, '/v', 'ApplicationDescription', '/d', 'TongZip 压缩包打开/解压', '/f');
   const fa = `${cap}\\FileAssociations`;
   for (const e of EXTS_OPENABLE) {
-    await reg('add', fa, '/v', e, '/d', PROGID, '/f');
+    await reg('add', fa, '/v', e, '/d', progidFor(e), '/f');
   }
   // RegisteredApplications 的值是相对本 hive 的 Capabilities 子键路径
   await reg('add', 'HKCU\\Software\\RegisteredApplications', '/v', 'TongZip', '/d', 'Software\\TongZip\\Capabilities', '/f');
@@ -241,7 +264,7 @@ export async function shellStatus(): Promise<boolean> {
   const probes = [
     `${ROOT}\\*\\shell\\TongZip`,
     `${ROOT}\\.7z\\shell\\TongZip`,
-    `${ROOT}\\${PROGID}`,
+    `${ROOT}\\${progidFor('.7z')}`,
   ];
   for (const p of probes) {
     try {

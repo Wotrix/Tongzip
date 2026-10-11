@@ -205,6 +205,20 @@ export interface ArchiveFile {
   mtime: string;
 }
 
+/** 磁盘扫描进度事件(主进程流式推送,渲染层据此显示动画与进度) */
+export interface ScanProgress {
+  /** 阶段:start=开始 / scanning=逐目录推进 / done=完成 */
+  phase: 'start' | 'scanning' | 'done';
+  /** 已完成的顶层目录数 */
+  rootsDone: number;
+  /** 顶层目录总数(桌面/文档/下载,取实际可用数) */
+  rootsTotal: number;
+  /** 当前正在扫描的顶层目录展示名(如「桌面」),done/start 时为空 */
+  current: string;
+  /** 截至当前已发现的压缩包数量(增量,供实时反馈) */
+  found: number;
+}
+
 /** 主题强调色预设(与 app.css 的 [data-accent] 对应) */
 export type AccentKey = 'violet' | 'blue' | 'orange' | 'cyan' | 'green' | 'indigo';
 
@@ -256,6 +270,10 @@ export interface Settings {
   sidebarCollapsed: boolean;
   /** 目录树面板宽度(px),可拖 160–400,默认 160(取下限) */
   treeWidth: number;
+  /** 浏览视图右侧详细信息面板开关:用户开/关跨会话记忆,默认开 */
+  browseDetails: boolean;
+  /** 目录树是否收起为 36px 竖条:用户切换跨会话记忆,默认完整展示 */
+  browseTreeRail: boolean;
   /** 浏览文件列表可拖列宽(px):缺省=该列按当前目录内容自适应收紧(尽量小且完整),拖过才定宽;双击回自适应 */
   listColumnWidths: { type?: number; size?: number; time?: number; name?: number };
   /** 被拖到 0 而隐藏的列(名称列不可隐藏);表头右键菜单可恢复 */
@@ -273,6 +291,7 @@ export const IPC = {
   engineDetect: 'tz:engine-detect',
   archiveList: 'tz:archive-list',
   scanArchives: 'tz:scan-archives',
+  scanProgress: 'tz:scan-progress',
   compress: 'tz:compress',
   extract: 'tz:extract',
   test: 'tz:test',

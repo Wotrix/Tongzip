@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { ExtractJob } from '@shared/types';
 import { ERR } from '@shared/types';
-import { Modal, useToast } from './ui';
+import { Modal, useToast, useModalClose } from './ui';
 import { IconExtract } from './icons';
 import { basename, parentDir } from '../lib/format';
 import type { AppApi } from '../App';
@@ -16,6 +16,7 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
   onClose: () => void;
 }) {
   const toast = useToast();
+  const close = useModalClose();
   const [dest, setDest] = useState(() => `${parentDir(archive).replace(/\//g, '\\')}\\${basename(archive).replace(/(\.tar)?\.[^.]+$/i, '')}`);
   const [overwrite, setOverwrite] = useState<ExtractJob['overwrite']>('ask');
   const [busy, setBusy] = useState(false);
@@ -68,7 +69,7 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
     void window.tz.taskPathSet(r.data.taskId, { archive, dest: dest.replace(/\\/g, '/') });
     api.trackTask(r.data.taskId, 'extract', async (j) => {
       setBusy(false);
-      if (j.status === 'done') { toast(`已解压到 ${dest}`); onClose(); }
+      if (j.status === 'done') { toast(`已解压到 ${dest}`); close(); }
       else if (j.status === 'error') {
         /* 机读码优先;includes 兜底兼容第三方引擎把密码错误写进自由文案的场景 */
         if (j.code === ERR.NEED_PASSWORD || j.message?.includes('密码')) {
@@ -147,7 +148,7 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
           </div>
         )}
         <div className="foot">
-          <button type="button" className="tbtn" onClick={onClose} disabled={busy}>取消</button>
+          <button type="button" className="tbtn" onClick={close} disabled={busy}>取消</button>
           <button type="button" className="tbtn primary" disabled={busy || !dest} onClick={() => void start(api.lastPassword(archive) ?? undefined)}>
             {busy ? '解压中…' : '解压'}
           </button>

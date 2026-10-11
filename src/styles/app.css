@@ -14,7 +14,7 @@
 
   /* 品牌紫 #5A36DE — 改 --accent 一处,其余派生色自动跟随 */
   --accent: #5a36de;
-  --accent-hover: color-mix(in srgb, var(--accent) 84%, #000);
+  --accent-hover: color-mix(in srgb, var(--accent) 90%, #fff); /* 悬停:提亮而非混黑(混黑发闷显脏),与深色主题同语言 */
   --accent-soft: color-mix(in srgb, var(--accent) 12%, #fff);
   --accent-ink: #ffffff;
   --bg-select: color-mix(in srgb, var(--accent) 13%, #fff); /* 选中持久态:13% 底+--ring 内描边与 hover 区分 */
@@ -23,6 +23,8 @@
   /* 分隔与描边 */
   --line: #e6e3ef;
   --line-strong: #d9d4e7;
+  --scroll: #d6d6dc;        /* 滚动条滑块:浅灰,不抢内容 */
+  --scroll-hover: #bdbdc8;
 
   /* 文字(紫调灰,与品牌色同相) */
   --ink: #23212e;
@@ -37,19 +39,31 @@
   --warn-soft: #faf3e3;
   --ok: var(--accent);
 
-  /* 文件类型色(参考图彩色图标体系) */
+  /* 文件类型色(一类一色,与 FileGlyph 分流同名) */
   --fx-folder: #f6b545;
   --fx-archive: #5a36de;
   --fx-code: #14a8b0;
   --fx-image: #e06fb0;
   --fx-doc: #6f6bd8;
   --fx-text: #8d88a0;
+  --fx-audio: #e05577;
+  --fx-video: #e0783f;
+  --fx-pdf: #d64545;
+  --fx-word: #4a7fd6;
+  --fx-sheet: #21a366;
+  --fx-slide: #e08b2e;
+  --fx-book: #8a5bd8;
+  --fx-font: #a05cd0;
+  --fx-exe: #12a594;
+  --fx-disc: #3f8ae0;
 
   /* 几何 */
   --r-ctl: 6px;             /* 控件圆角:适中,不过度圆润 */
   --r-panel: 10px;
   --shadow-float: 0 6px 24px rgba(20, 26, 32, .10), 0 1px 4px rgba(20, 26, 32, .06);
   --shadow-sheet: 0 16px 48px rgba(20, 26, 32, .16), 0 2px 8px rgba(20, 26, 32, .08);
+  /* 对话框浮层:柔和品牌色淡染阴影(竹影紫相),悬浮感强于 sheet;末尾 0.5px 描边靠 accent 混色勾出精致轮廓 */
+  --shadow-modal: 0 24px 70px -12px rgba(60, 40, 140, .28), 0 8px 24px -6px rgba(60, 40, 140, .16), 0 0 0 .5px color-mix(in srgb, var(--accent) 14%, transparent);
 
   /* 右键菜单/浮层毛玻璃表面(Win11 原生观感) */
   --mica-bg: rgba(246, 247, 249, .82);
@@ -77,6 +91,8 @@
   --floating: #26242e;
   --line: #37353f;
   --line-strong: #43404e;
+  --scroll: #4b4b55;        /* 滚动条滑块(深色主题档) */
+  --scroll-hover: #62626e;
   --ink: #e3e1ec;
   --ink-2: #aea9bd;
   --ink-3: #7e7a8d;
@@ -96,8 +112,20 @@
   --fx-code: #3ec2c9;
   --fx-image: #d97fb4;
   --fx-doc: #9d97ec;
+  --fx-text: #9a94ad;
+  --fx-audio: #f07a99;
+  --fx-video: #f09a63;
+  --fx-pdf: #ef6b6b;
+  --fx-word: #7aa5e8;
+  --fx-sheet: #4cc38a;
+  --fx-slide: #efa64f;
+  --fx-book: #a98ae8;
+  --fx-font: #c08fe8;
+  --fx-exe: #38c9b8;
+  --fx-disc: #6aa8f0;
   --shadow-float: 0 6px 24px rgba(0, 0, 0, .38), 0 1px 4px rgba(0, 0, 0, .3);
   --shadow-sheet: 0 16px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-modal: 0 28px 80px -12px rgba(0, 0, 0, .7), 0 10px 28px -8px rgba(0, 0, 0, .55), 0 0 0 .5px color-mix(in srgb, var(--accent) 26%, transparent);
   --mica-bg: rgba(45, 49, 55, .82);
   --mica-line: rgba(255, 255, 255, .08);
   --shadow-mica: 0 8px 26px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .4), 0 0 0 .5px rgba(255, 255, 255, .06);
@@ -133,10 +161,12 @@ button { cursor: pointer; }
    .icon-btn/.tbtn/.seg button 的 transition 简写(同为无 layer,后写者赢)。 */
 :is(button, [role='button'], [role='tab'], .row, .bt-row):active { transition-duration: 0ms; }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: content-box; border: 2px solid transparent; }
+/* 滚动条:细身(8px 槽 + 2px 透明边→4px 可见滑块)浅灰,悬停略深 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 4px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); background-clip: content-box; border: 2px solid transparent; }
 ::-webkit-scrollbar-track { background: transparent; }
+/* 注:不写标准 scrollbar-color —— Chromium 见到它会整套忽略 ::-webkit-scrollbar 自定义,且 Electron 无 Firefox 渲染路径 */
 
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-radius: 4px; }
 
@@ -146,7 +176,19 @@ button { cursor: pointer; }
 
 .app-shell { display: flex; flex-direction: row; height: 100vh; }
 
-.main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--secondary); }
+
+/* 内容区面板:扁平双色(无描边线),仅靠底色与圆角区分于顶栏/侧栏灰底 */
+.content-panel {
+  flex: 1; min-height: 0; min-width: 0;
+  display: flex; flex-direction: column;
+  /* 四边贴齐顶栏/侧栏/窗口边缘, 无边框线, 保留四角圆角 */
+  margin: 0;
+  background: var(--panel);
+  border: none;
+  border-radius: 14px;
+  overflow: hidden;
+}
 
 /* ---------------- 顶栏 / 导航行(已迁 Tailwind;仅余共用件) ---------------- */
 
@@ -175,8 +217,8 @@ button { cursor: pointer; }
 .tbtn {
   height: 32px;
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 0 12px;
-  border-radius: var(--r-ctl);
+  padding: 0 13px;
+  border-radius: 9px;
   border: 1px solid transparent;
   color: var(--ink-2);
   font-size: 12.5px;
@@ -191,12 +233,16 @@ button { cursor: pointer; }
 .tbtn.bordered { border-color: var(--line); background: var(--bg); }
 .tbtn.bordered:hover:not(:disabled) { border-color: var(--line-strong); }
 
+/* 主按钮:平涂品牌色,无阴影无位移 — 克制即高级。
+   hover/active 必须重申 color:白字——.tbtn:hover:not(:disabled){color:var(--ink)} 特异性(0,3,0)
+   高于 .tbtn.primary(0,2,0),否则悬停时紫底配深字 */
 .tbtn.primary {
   background: var(--accent);
   color: var(--accent-ink);
   font-weight: 600;
 }
-.tbtn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.tbtn.primary:hover:not(:disabled) { background: var(--accent-hover); color: var(--accent-ink); }
+.tbtn.primary:active:not(:disabled) { background: color-mix(in srgb, var(--accent) 94%, #000); color: var(--accent-ink); }
 .tbtn.primary:disabled { background: var(--line); color: var(--ink-disabled); }
 
 .tbtn.sm { height: 27px; padding: 0 9px; font-size: 12px; }
@@ -207,7 +253,7 @@ button { cursor: pointer; }
 
 /* 详情面板与文件列表已迁 Tailwind(Browser.tsx);detail-pane/dp-·pv-/list-head/entry-list/row/ck-box 等旧类名仅作探针钩子,不承载样式 */
 
-/* 文件类型彩色图标(FileGlyph) — 颜色由 tokens 的 --fx-* 驱动 */
+/* 文件类型彩色图标(FileGlyph) — 颜色由 tokens 的 --fx-* 驱动,一类一色 */
 .fx { flex: none; }
 .fx-folder { color: var(--fx-folder); }
 .fx-archive { color: var(--fx-archive); }
@@ -215,6 +261,16 @@ button { cursor: pointer; }
 .fx-image { color: var(--fx-image); }
 .fx-doc { color: var(--fx-doc); }
 .fx-text { color: var(--fx-text); }
+.fx-audio { color: var(--fx-audio); }
+.fx-video { color: var(--fx-video); }
+.fx-pdf { color: var(--fx-pdf); }
+.fx-word { color: var(--fx-word); }
+.fx-sheet { color: var(--fx-sheet); }
+.fx-slide { color: var(--fx-slide); }
+.fx-book { color: var(--fx-book); }
+.fx-font { color: var(--fx-font); }
+.fx-exe { color: var(--fx-exe); }
+.fx-disc { color: var(--fx-disc); }
 .fx-plain { color: var(--ink-3); }
 .fx-enc { color: var(--warn); }
 
@@ -276,6 +332,12 @@ button { cursor: pointer; }
 .input.err { border-color: var(--danger); }
 select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238b94a0' stroke-width='1.5' stroke-linecap='round'/></svg>") no-repeat right 10px center; padding-right: 26px; }
 
+/* 品牌化 Select 触发器:Radix 关闭下拉后会把焦点还给触发器,若沿用上面的 .input:focus
+   光环会常驻成「取消后仍高亮」。收紧为:静止/聚焦均无光环,仅展开态(data-state=open)
+   点亮品牌 ring。两条同为无 layer(压过 Tailwind utilities),后写的 open 规则赢过 :focus。 */
+[data-slot='select-trigger']:focus { border-color: var(--line-strong); box-shadow: none; outline: none; }
+[data-slot='select-trigger'][data-state='open'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+
 .rowline { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .rowline .rl-label { font-size: 12.5px; color: var(--ink); }
 .rowline .rl-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
@@ -306,28 +368,36 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
 
 .seg {
   display: inline-flex;
-  padding: 3px;
-  gap: 2px;
+  padding: 4px;
+  gap: 4px;
   background: var(--bg-chrome);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 13px;
 }
 .seg button {
-  height: 28px;
-  padding: 0 13px;
-  border-radius: 6px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 12.5px;
   color: var(--ink-2);
   white-space: nowrap;
   transition: background .12s, color .12s;
 }
+.seg button svg { width: 15px; height: 15px; }
 .seg button:hover { color: var(--ink); }
 .seg button:active:not(.on) { background: var(--bg-active); } /* 未选中块按下时也染色,点击不再空转 */
 .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 1px 3px rgba(20, 26, 32, .18); } /* 选中块满品牌底白字:与 Switch/Checkbox 同语言 */
 
 .range { width: 100%; accent-color: var(--accent); }
 
-.foot { display: flex; justify-content: flex-end; gap: 9px; margin-top: 4px; }
+.foot { display: flex; justify-content: flex-end; gap: 9px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+/* 对话框入场动画:遮罩淡入 + 面板微上浮缩放(关闭为即时卸载,不做退场) */
+@keyframes dlg-in-backdrop { from { opacity: 0; } }
+@keyframes dlg-in-panel { from { opacity: 0; transform: translateY(12px) scale(.965); } }
 
 .note { font-size: 12px; color: var(--ink-3); }
 .note.mono { font-family: var(--font-mono); font-size: 11.5px; }

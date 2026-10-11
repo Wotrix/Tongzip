@@ -79,6 +79,7 @@ export function useTaskMenu(path?: string) {
 export function RunningCard({ job }: { job: TrackedJob }) {
   const meta = KIND_LABEL[job.kind];
   const Icon = meta.icon;
+  const toast = useToast();
   const { menu, bind } = useTaskMenu(job.path);
   const [paused, setPaused] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -107,6 +108,13 @@ export function RunningCard({ job }: { job: TrackedJob }) {
             : <Icon className="text-muted-foreground" />}
         <span>{done ? `${meta.done.replace('完成', '')}完成` : failed ? '任务已中断' : paused ? '已暂停' : meta.run}</span>
         <span className="ml-auto flex gap-0.5">
+          {/* 终态卡的「打开文件位置」图标钮:运行中不显(压缩输出尚未落盘,点了只会误报不存在) */}
+          {!running && job.path && (
+            <Button variant="ghost" size="icon-xs" className="size-[26px] rounded-md text-muted-foreground hover:bg-[var(--bg-active)]"
+              title="打开文件位置" onClick={() => revealArchive(job.path!, toast)}>
+              <IconReveal className="size-3" />
+            </Button>
+          )}
           {running && (
             <Button variant="ghost" size="icon-xs" className="size-[26px] rounded-md text-muted-foreground" disabled={busy}
               title={paused ? '继续任务' : '暂停任务'} onClick={() => void togglePause()}>
@@ -142,25 +150,43 @@ export function RunningCard({ job }: { job: TrackedJob }) {
   );
 }
 
-export function HistoryRow({ h }: { h: DoneJob }) {
+export function HistoryRow({ h, onOpen }: { h: DoneJob; onOpen?: (path: string) => void }) {
   const meta = KIND_LABEL[h.kind];
   const Icon = h.status === 'done' ? IconCheckCircle : IconWarn;
+  const toast = useToast();
   const { menu, bind } = useTaskMenu(h.path);
+  /* 点击行:先验存在性再在标签中打开压缩包(删除类任务的目标已消失,自然降级为 toast) */
+  const openable = h.status === 'done' && !!h.path && !!onOpen;
+  const openIt = () => {
+    if (!openable) return;
+    const p = h.path!;
+    void window.tz.exists(p).then((ok) => ok ? onOpen!(p) : toast('文件已不存在或被移除', 'err'));
+  };
   return (
     <div className={cn(
-      'flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
+      'group flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
       'transition-colors hover:bg-accent active:bg-[var(--bg-active)] [&_svg]:size-[15px] [&_svg]:shrink-0',
+      openable && 'cursor-pointer',
       h.status !== 'done' && 'text-destructive',
-    )} {...bind}>
+    )} onClick={openIt} {...bind}>
       {menu}
       <Icon className={h.status === 'done' ? 'text-primary' : 'text-destructive'} />
       <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{h.label ? `${meta.done} · ${h.label}` : meta.done}</span>
-      <span className="shrink-0 text-[11.5px] text-muted-foreground">{fmtAgo(h.at)}</span>
+      <span className="shrink-0 text-[11.5px] text-muted-foreground group-hover:invisible">{fmtAgo(h.at)}</span>
+      {/* 悬停 reveal:行右缘浮现「打开文件位置」图标钮(时间戳隐身让位),内嵌钮悬停面用深一档 --bg-active */}
+      {h.path && (
+        <button className={cn(
+          'hidden h-[22px] w-[24px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] text-muted-foreground',
+          'group-hover:flex hover:bg-[var(--bg-active)] hover:text-foreground [&_svg]:size-[13px]',
+        )} title="打开文件位置" onClick={(e) => { e.stopPropagation(); revealArchive(h.path!, toast); }}>
+          <IconReveal />
+        </button>
+      )}
     </div>
   );
 }
 
-export default function TaskCenter({ onClose }: { onClose: () => void }) {
+export default function TaskCenter({ onClose, openArchive }: { onClose: () => void; openArchive?: (path: string) => void }) {
   const { jobs, history, clearHistory } = useTaskHub();
   return (
     <>
@@ -183,7 +209,8 @@ export default function TaskCenter({ onClose }: { onClose: () => void }) {
                 <span className="flex-1">最近完成</span>
                 <Button variant="ghost" size="xs" className="h-[22px] px-1.5 text-[11px] font-normal" onClick={clearHistory}>清空</Button>
               </div>
-              {history.map((h) => <HistoryRow key={h.taskId + h.at} h={h} />)}
+              {/* 打开后收起浮层,焦点交给新标签 */}
+              {history.map((h) => <HistoryRow key={h.taskId + h.at} h={h} onOpen={openArchive && ((p) => { openArchive(p); onClose(); })} />)}
             </>
           )}
         </div>

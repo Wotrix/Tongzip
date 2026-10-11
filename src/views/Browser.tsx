@@ -12,7 +12,7 @@ import {
   IconClose, IconReveal, IconTest, IconPanel, IconTree, IconSidebar,
 } from '../components/icons';
 import FileGlyph, { EntryGlyph } from '../components/FileGlyph';
-import { ContextMenu, PanelHandle, usePanelDrag, useToast, type CtxItem } from '../components/ui';
+import { ContextMenu, PanelHandle, rubberClamp, usePanelDrag, useToast, type CtxItem } from '../components/ui';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '@/lib/utils';
@@ -112,6 +112,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     void (async () => {
       const s = await window.tz.getSettings();
       if (typeof s.treeWidth === 'number') setTreeW(Math.min(TREE_MAX, Math.max(TREE_COLLAPSE, Math.round(s.treeWidth)) || TREE_DEFAULT));
+      /* 面板形态跨会话记忆:详情面板开关、目录树是否收起为竖条(旧设置无此两键时保持默认 开/完整) */
+      if (typeof s.browseDetails === 'boolean') setShowDetails(s.browseDetails);
+      if (s.browseTreeRail) setTreeMode('rail');
       await loadColWidths(setCols);
       setHidden(new Set(await loadHiddenCols()));
     })();
@@ -120,6 +123,10 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     setCols(next);
     void window.tz.setSettings({ listColumnWidths: next });
   };
+  /* 带记忆的开关:用户这次开/关,下次冷启动仍是这个形态(写 browseDetails / browseTreeRail) */
+  const setDetails = (v: boolean) => { setShowDetails(v); void window.tz.setSettings({ browseDetails: v }); };
+  const toggleDetails = () => setDetails(!showDetails);
+  const setTreeRail = (m: 'full' | 'rail') => { setTreeMode(m); void window.tz.setSettings({ browseTreeRail: m === 'rail' }); };
   /* 隐藏/恢复辅助列:写回 hiddenColumns(单一持久化真相),两视图互见 */
   const setHiddenCols = (next: Set<ColKey>) => {
     setHidden(next);
@@ -157,23 +164,24 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     el.addEventListener('pointercancel', up);
   };
 
-  /* 目录树右缘拖宽:与列手柄同一套 capture 模式,松手才持久化;拖到最小(<120)不弹回,收起为 36px 竖条 */
+  /* 目录树右缘拖宽:与列手柄同一套 capture 模式,松手才持久化;
+     拖动中全程跟手(越界走橡皮筋,不撞墙卡死),只有明显拖到边(原始手势 <TREE_COLLAPSE)才收起为竖条 */
   const startTreeDrag = (e: React.PointerEvent) => {
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const startX = e.clientX;
     const base = treeW;
-    const clampT = (w: number) => Math.min(400, Math.max(160, Math.round(w) || 160));
-    const at = (ev: PointerEvent) => clampT(base + ev.clientX - startX);
-    const move = (ev: PointerEvent) => setTreeW(at(ev));
+    const rawAt = (cx: number) => base + cx - startX;
+    const at = (cx: number) => Math.round(rubberClamp(rawAt(cx), TREE_RAIL_W, TREE_MAX)) || TREE_RAIL_W;
+    const move = (ev: PointerEvent) => setTreeW(at(ev.clientX));
     const up = (ev: PointerEvent) => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
       setTreeDrag(false);
-      if (base + ev.clientX - startX < 120) { setTreeMode('rail'); return; } // 不落地非法宽,展开时回到原宽
-      const nu = at(ev);
+      if (rawAt(ev.clientX) < TREE_COLLAPSE) { setTreeRail('rail'); return; } // 不落地非法宽,展开时回到原宽
+      const nu = Math.min(TREE_MAX, Math.max(TREE_COLLAPSE, at(ev.clientX)));
       setTreeW(nu);
       void window.tz.setSettings({ treeWidth: nu });
     };
@@ -193,11 +201,11 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
       const raw = 36 + ev.clientX - startX;
-      if (raw < 120) return;
-      const nu = Math.min(400, Math.max(160, Math.round(raw) || 160));
+      if (raw < TREE_COLLAPSE) return;
+      const nu = Math.min(TREE_MAX, Math.max(TREE_COLLAPSE, Math.round(raw) || TREE_COLLAPSE));
       setTreeW(nu);
       void window.tz.setSettings({ treeWidth: nu });
-      setTreeMode('full');
+      setTreeRail('full');
     };
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
@@ -246,12 +254,13 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     });
   }, [prefix]);
 
-  /* 可见行拉平序列:渲染与键盘导航共用单一真相 */
+  /* 可见行拉平序列:渲染与键盘导航共用单一真相。根节点与普通节点同权走 expanded,
+     此前硬编码 depth===0 恒展开导致根箭头点不动(整棵树永远收不起来) */
   const visibleRows = useMemo(() => {
     const out: { node: TreeDir; depth: number }[] = [];
     const walk = (d: TreeDir, depth: number) => {
       out.push({ node: d, depth });
-      if (depth === 0 || expanded.has(d.path)) d.kids.forEach((k) => walk(k, depth + 1));
+      if (expanded.has(d.path)) d.kids.forEach((k) => walk(k, depth + 1));
     };
     walk(treeRoot, 0);
     return out;
@@ -372,7 +381,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       }
       if (e.altKey && e.key === 'ArrowLeft') nav.onBack();
       if (e.altKey && e.key === 'ArrowRight') nav.onForward();
-      if (e.altKey && e.key.toLowerCase() === 'd') { e.preventDefault(); setShowDetails((v) => !v); }
+      if (e.altKey && e.key.toLowerCase() === 'd') { e.preventDefault(); toggleDetails(); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -434,6 +443,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       if (!row.isDir && t.length === 1) {
         items.push({ label: '复制文件名', onClick: () => void copyName(row.name) });
       }
+      /* 详细信息:单点选中该行并唤开右侧详情面板(与 Alt+D/工具栏开关同源) */
+      items.push({ label: '详细信息', icon: <IconPanel />, onClick: () => { setSel(new Set([row.path])); setDetails(true); } });
       items.push({ sep: true, label: '' });
     }
     items.push({ label: t.length ? `解压选中 (${t.length} 项)…` : '解压全部…', icon: <IconExtract />, kbd: 'Ctrl+E', onClick: () => actions.onExtract(t) });
@@ -527,12 +538,12 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       if (node.kids.length) {
-        if (node.path && !expanded.has(node.path)) setExpanded((p) => new Set(p).add(node.path));
+        if (!expanded.has(node.path)) setExpanded((p) => new Set(p).add(node.path));
         else setFocusPath(node.kids[0].path);
       }
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (node.path && node.kids.length && expanded.has(node.path)) toggleExpand(node.path);
+      if (node.kids.length && expanded.has(node.path)) toggleExpand(node.path);
       else if (node.path) setFocusPath(parentPath);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -562,8 +573,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
     { label: '再压缩一份', icon: <IconArchive />, onClick: actions.onCompressAgain },
     { label: '重命名压缩包…', icon: <IconRename />, onClick: actions.onRenameArchive },
     { sep: true, label: '' },
-    { label: treeMode === 'full' ? '收起目录树' : '展开目录树', icon: <IconTree />, onClick: () => setTreeMode((m) => (m === 'full' ? 'rail' : 'full')) },
-    { label: showDetails ? '隐藏详细信息面板' : '显示详细信息面板', kbd: 'Alt+D', icon: <IconPanel />, onClick: () => setShowDetails((v) => !v) },
+    { label: treeMode === 'full' ? '收起目录树' : '展开目录树', icon: <IconTree />, onClick: () => setTreeRail(treeMode === 'full' ? 'rail' : 'full') },
+    { label: showDetails ? '隐藏详细信息面板' : '显示详细信息面板', kbd: 'Alt+D', icon: <IconPanel />, onClick: () => toggleDetails() },
     { label: sidebarHidden ? '显示侧边栏' : '隐藏侧边栏', kbd: 'Alt+B', icon: <IconSidebar />, onClick: actions.onToggleSidebar },
     { sep: true, label: '' },
     /* 列显示/隐藏开关:拖到最小收起的列从这里恢复 */
@@ -580,8 +591,11 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
           onClick={actions.onToggleSidebar}><IconSidebar className="size-4" /></button>
         <button className={ARROW_CLS} title="返回 (Alt+←)" disabled={!nav.canBack} onClick={() => nav.onBack()}><IconBack className="size-4" /></button>
         <button className={ARROW_CLS} title="前进 (Alt+→)" disabled={!nav.canForward} onClick={() => nav.onForward()}><IconForward className="size-4" /></button>
+        {/* 面包屑:重叠坑根治——段外壳可收缩而旧写法按钮 shrink-0,壳压扁字不压→相邻段叠印。
+            改为按钮自身可缩(min-w-0+shrink 覆盖 CRUMB_CLS 的 shrink-0),窄时出省略号;
+            末段(当前目录)恒 shrink-0 保完整,只挤旧段 */}
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden text-[13px]">
-          <button className={cn(CRUMB_CLS, 'inline-flex items-center gap-1.5 [&>span]:min-w-0 [&>span]:truncate', !nav.prefix && 'font-semibold text-foreground')}
+          <button className={cn(CRUMB_CLS, 'inline-flex min-w-0 shrink items-center gap-1.5 [&>span]:min-w-0 [&>span]:truncate', !nav.prefix && 'font-semibold text-foreground')}
             title={nav.archive} onClick={() => nav.onGoto('')}>
             <IconFolder className="size-3.5 shrink-0 text-primary" /><span>{basename(nav.archive)}</span>
           </button>
@@ -589,9 +603,9 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
             const p = arr.slice(0, i + 1).join('/') + '/';
             const last = i === arr.length - 1;
             return (
-              <span key={p} className="inline-flex min-w-0 items-center">
-                <span className="inline-flex text-muted-foreground"><IconChevronRight className="size-3.5" /></span>
-                <button className={cn(CRUMB_CLS, last && 'font-semibold text-foreground')} onClick={() => nav.onGoto(p)}>{c}</button>
+              <span key={p} className={cn('inline-flex min-w-0 items-center', last && 'shrink-0')}>
+                <span className="inline-flex shrink-0 text-muted-foreground"><IconChevronRight className="size-3.5" /></span>
+                <button className={cn(CRUMB_CLS, 'min-w-0 shrink', last && 'shrink-0 font-semibold text-foreground')} title={`/${p}`} onClick={() => nav.onGoto(p)}>{c}</button>
               </span>
             );
           })}
@@ -609,7 +623,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         </div>
       </div>
 
-      {/* 动作行:解压到(主按钮+下拉) · 添加文件 · 新建压缩包 · 右侧删除/更多 */}
+      {/* 动作行:解压到(主按钮+下拉) · 添加文件 · 新建压缩包 · 右侧删除/更多/详情面板开关 */}
       <div className="flex flex-none items-center gap-2 border-b border-border bg-background px-4 py-2">
         <div className="inline-flex items-stretch">
           <Button className={cn(TB_CLS, 'rounded-r-none font-semibold')} onClick={() => actions.onExtract(selEntries)} title="解压 (Ctrl+E)"><IconExtract /><span className="@max-[640px]:hidden">解压到</span></Button>
@@ -627,25 +641,28 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
           setMoreMenu({ x: r.right - 200, y: r.bottom + 4 });
         }} title="更多操作"><IconMore /></Button>
+        {/* 详细信息面板常驻开关:激活染品牌色,与 Alt+D/竖条钮/更多菜单同源 */}
+        <Button variant="ghost" className={cn(TB_CLS, showDetails && 'text-primary hover:text-primary')}
+          title={`${showDetails ? '隐藏' : '显示'}详细信息面板 (Alt+D)`} onClick={() => toggleDetails()}><IconPanel /></Button>
       </div>
 
       {/* 目录树 + 文件列表 + 详情面板 */}
       <div className="flex min-h-0 flex-1">
         {treeMode === 'rail' ? (
           /* 36px 图标竖条:树展开钮 + 详细信息开关(激活染 primary),纵排居中;右缘手柄可直接拖回完整树 */
-          <aside className="br-tree relative flex w-9 flex-none flex-col items-center gap-1 overflow-auto border-r border-border bg-secondary py-1.5">
-            <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[15px]" title="展开目录树" onClick={() => setTreeMode('full')}><IconTree /></button>
+          <aside className="br-tree relative flex w-9 flex-none flex-col items-center gap-1 overflow-auto border-r border-border bg-background py-1.5">
+            <button className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[15px]" title="展开目录树" onClick={() => setTreeRail('full')}><IconTree /></button>
             <button className={cn('grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] [&_svg]:size-[15px]', showDetails && 'text-primary hover:text-primary')}
-              title={`${showDetails ? '隐藏' : '显示'}详细信息面板 (Alt+D)`} onClick={() => setShowDetails((v) => !v)}><IconPanel /></button>
+              title={`${showDetails ? '隐藏' : '显示'}详细信息面板 (Alt+D)`} onClick={() => toggleDetails()}><IconPanel /></button>
             <span aria-hidden title="拖拽唤回目录树" onPointerDown={startRailDrag}
               className="absolute inset-y-0 right-0 z-20 w-[9px] cursor-col-resize touch-none after:absolute after:inset-y-2 after:right-0 after:w-[2px] after:rounded-full after:bg-transparent after:transition-colors hover:after:bg-primary/40 active:after:bg-primary/60" />
           </aside>
         ) : (
           /* 目录树面板:外层 div 控宽(手柄骑右缘,不受内层滚动影响);bt-row / on = 键盘导航与自动滚动的 querySelector 钩子,不承载样式 */
           <div className={cn('relative flex-none', treeDrag && 'select-none')} style={{ width: treeW }}>
-          <aside className="br-tree h-full w-full overflow-auto border-r border-border bg-secondary p-1.5 pb-3.5 outline-none" ref={treeRef} tabIndex={0} aria-label="压缩包目录树" onKeyDown={onTreeKey}>
+          <aside className="br-tree h-full w-full overflow-auto border-r border-border bg-background p-1.5 pb-3.5 outline-none" ref={treeRef} tabIndex={0} aria-label="压缩包目录树" onKeyDown={onTreeKey}>
             {visibleRows.map(({ node, depth }) => {
-              const open = depth === 0 || expanded.has(node.path);
+              const open = expanded.has(node.path);
               return (
                 <div key={node.path}
                   className={cn(
@@ -733,7 +750,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
 
         {showDetails && (
           <aside className="detail-pane relative flex w-[clamp(232px,23vw,300px)] flex-none flex-col overflow-auto border-l border-border bg-secondary">
-            <button className="dp-close absolute right-2 top-2 z-[2] grid size-[26px] place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]" title="关闭面板 (Alt+D)" onClick={() => setShowDetails(false)}><IconClose className="size-3" /></button>
+            <button className="dp-close absolute right-2 top-2 z-[2] grid size-[26px] place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)]" title="关闭面板 (Alt+D)" onClick={() => setDetails(false)}><IconClose className="size-3" /></button>
             {detail ? (
               <>
                 <div className="dp-hero flex flex-col items-center gap-1.5 px-4 pb-3.5 pt-[26px] text-center">
@@ -832,11 +849,20 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         )}
       </div>
 
-      {/* 状态栏:左侧计数,中部显示压缩包磁盘路径(过长省略,悬停看全) */}
+      {/* 状态栏:左侧计数,中部显示压缩包磁盘路径(悬停浮现「打开文件位置」图标,右键直接复制路径) */}
       <div className="flex h-[30px] flex-none items-center gap-[18px] border-t border-border bg-secondary px-4 text-xs text-muted-foreground">
         <span className="inline-flex items-center"><i className="mr-[7px] inline-block size-1.5 shrink-0 rounded-full bg-primary align-[1px]" />{rows.length} 个项目{selEntries.length > 0 && ` · 已选中 ${selEntries.length} 个 (${fmtBytes(selSize)})`}</span>
         {info.hasEncrypted && <span className="text-[color:var(--warn)]">包含加密内容</span>}
-        <span className="min-w-0 flex-1 truncate font-mono" title={archive}>{archive}</span>
+        <span className="group flex min-w-0 flex-1 items-center gap-1"
+          title={`${archive}\n右键:复制路径`}
+          onContextMenu={(e) => { e.preventDefault(); void copyPath(archive); }}>
+          <span className="min-w-0 truncate font-mono">{archive}</span>
+          {/* 常驻占位仅控可见性:悬停显图标时路径宽度不跳动 */}
+          <button className="invisible shrink-0 cursor-pointer rounded-[4px] p-[3px] text-muted-foreground group-hover:visible hover:bg-[var(--bg-active)] hover:text-foreground"
+            title="打开文件位置" onClick={() => void window.tz.revealInExplorer(archive)}>
+            <IconReveal className="size-[13px]" />
+          </button>
+        </span>
         <span className="ml-auto font-mono">
           {searching ? `搜索: ${query.trim()}` : `${info.type.toUpperCase()} · ${fmtBytes(info.physSize)}`}
         </span>

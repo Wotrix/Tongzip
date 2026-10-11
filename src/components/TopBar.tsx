@@ -11,7 +11,7 @@ import AppLogo from './AppLogo';
 import { useTaskHub } from './ui';
 import { cn } from '@/lib/utils';
 
-export default function TopBar({ archiveLabel = null }: { archiveLabel?: string | null }) {
+export default function TopBar({ archiveLabel = null, openArchive }: { archiveLabel?: string | null; openArchive?: (path: string) => void }) {
   const { jobs } = useTaskHub();
   const running = jobs.filter((j) => j.status === 'running').length;
   const [tcOpen, setTcOpen] = useState(false);
@@ -52,7 +52,7 @@ export default function TopBar({ archiveLabel = null }: { archiveLabel?: string 
         <button className="app-nodrag inline-flex h-[42px] w-[46px] items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground" title="关闭" onClick={() => window.tz.winClose()}><IconClose className="size-3.5" /></button>
       </div>
 
-      {tcOpen && <TaskCenter onClose={() => setTcOpen(false)} />}
+      {tcOpen && <TaskCenter onClose={() => setTcOpen(false)} openArchive={openArchive} />}
     </header>
   );
 }

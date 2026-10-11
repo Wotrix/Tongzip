@@ -10,21 +10,55 @@ import { cn } from '@/lib/utils';
 
 /* ---------------- Modal ---------------- */
 
+/** 关闭信号:对话框内所有「取消/完成/关闭」统一走它(而非直接 onClose),
+   以便播放退场动画并清除焦点残留。 */
+const ModalCloseCtx = createContext<() => void>(() => undefined);
+export const useModalClose = () => useContext(ModalCloseCtx);
+
 export function Modal({ title, icon, onClose, children, width }: {
   title: string; icon?: ReactNode; onClose: () => void; children: ReactNode; width?: number;
 }) {
+  // 关闭:先清焦点(消除输入框 ring / :focus-visible 描边 / 按压面残留高亮),
+  // 再同步卸载对话框 — 不设延迟/退场态,任何路径的关闭都是一击即关,绝不会被卡住。
+  const close = useCallback(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    onClose();
+  }, [onClose]);
+
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [close]);
+
   return (
-    <div className="app-nodrag fixed inset-0 z-90 flex items-center justify-center bg-[rgba(24,28,32,.32)] animate-[fadein_.12s_ease-out] dark:bg-[rgba(0,0,0,.5)]" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="max-h-[calc(100vh-70px)] w-[min(640px,calc(100vw-60px))] overflow-auto rounded-xl border border-border bg-popover p-[22px_24px] text-popover-foreground shadow-[var(--shadow-sheet)] animate-[rise_.14s_ease-out]" style={width ? { width: `min(${width}px, calc(100vw - 60px))` } : undefined}>
-        <h2 className="mb-[18px] flex items-center gap-2.5 text-[15px] font-semibold [&_svg]:size-[18px] [&_svg]:text-primary">{icon}{title}</h2>
-        {children}
+    <ModalCloseCtx.Provider value={close}>
+      <div
+        className="app-nodrag fixed inset-0 z-90 flex items-center justify-center bg-black/45 backdrop-blur-[3px] animate-[dlg-in-backdrop_.2s_ease-out]"
+        onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}
+      >
+        <div
+          className={cn(
+            'flex max-h-[calc(100vh-70px)] w-[min(640px,calc(100vw-60px))] flex-col overflow-hidden',
+            'rounded-[16px] border border-border/50 bg-card/95 text-card-foreground shadow-[var(--shadow-modal)] backdrop-blur-md',
+            'animate-[dlg-in-panel_.24s_cubic-bezier(.22,1,.36,1)]',
+          )}
+          style={width ? { width: `min(${width}px, calc(100vw - 60px))` } : undefined}
+        >
+          <header className="flex shrink-0 items-center gap-2.5 px-6 pb-3 pt-5">
+            {icon && <span className="[&_svg]:size-[18px] [&_svg]:text-primary">{icon}</span>}
+            <h2 className="text-[15px] font-semibold">{title}</h2>
+            <button
+              type="button" onClick={close} aria-label="关闭"
+              className="ml-auto -mr-2 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-[background,color,transform] hover:bg-accent hover:text-foreground active:scale-90 focus-visible:outline-none"
+            >
+              <IconClose className="size-[15px]" />
+            </button>
+          </header>
+          <div className="min-h-0 flex-1 overflow-auto px-6 pb-5">{children}</div>
+        </div>
       </div>
-    </div>
+    </ModalCloseCtx.Provider>
   );
 }
 
@@ -258,9 +292,19 @@ export function ContextMenu({ x, y, items, onClose }: {
 /* ---------------- 可拖面板手柄 ---------------- */
 
 /**
+ * 越界橡皮筋钳位:界内 1:1 完全跟手;越界后按 0.2 阻尼递减,
+ * 手感是“有弹性的软边界”而非撞墙卡死;提交前上层再硬钳回界内。
+ */
+export function rubberClamp(w: number, min: number, max: number): number {
+  if (w < min) return min - (min - w) * 0.2;
+  if (w > max) return max + (w - max) * 0.2;
+  return w;
+}
+
+/**
  * 拖宽手势:监听挂在 window 而非手柄元素——收起↔展开分支切换会替换手柄 DOM,
  * 元素级 setPointerCapture 会随手柄卸载丢手势(表现为“拖不动”);
- * 拖动中每帧回写本地 dragW(宽度实时跟手),松手才 commit 交给上层持久化。
+ * 拖动中每帧回写本地 dragW(宽度实时跟手,越界走橡皮筋),松手才 commit 交给上层持久化。
  * min 取收起阈值以下的地板(如竖条 36),是否收起由 commit 自己判断。
  */
 export function usePanelDrag(opt: { min: number; max: number; base: () => number; commit: (w: number) => void }) {
@@ -273,7 +317,7 @@ export function usePanelDrag(opt: { min: number; max: number; base: () => number
     const base0 = ref.current.base();
     const at = (cx: number) => {
       const { min, max } = ref.current;
-      return Math.min(max, Math.max(min, Math.round(base0 + cx - startX) || min));
+      return Math.round(rubberClamp(base0 + cx - startX, min, max)) || min;
     };
     const move = (ev: PointerEvent) => setDragW(at(ev.clientX));
     const up = (ev: PointerEvent) => {
@@ -293,8 +337,7 @@ export function usePanelDrag(opt: { min: number; max: number; base: () => number
 
 /**
  * 面板右缘拖宽手柄:12px 命中区(够宽才瞄得准)
- * 中间常驻可见短把手(“拖拽栏”,随时提示这里能拖),hover/拖动染品牌色;
- * 另补一条仅 hover/拖动时出现的通长高亮线,避开与面板自身 border-r 叠成双线。live=拖动中。
+ * 静止时不留常驻把手(避免成杂点标志),仅 hover/拖动时显一条通长高亮线作反馈;live=拖动中。
  */
 export function PanelHandle({ onPointerDown, onDoubleClick, live, title }: {
   onPointerDown: (e: React.PointerEvent) => void;
@@ -308,10 +351,8 @@ export function PanelHandle({ onPointerDown, onDoubleClick, live, title }: {
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
       className="panel-handle group absolute inset-y-0 right-0 z-20 w-[12px] cursor-col-resize touch-none">
-      <i className={cn('pointer-events-none absolute inset-y-0 right-0 w-[3px] rounded-full transition-opacity duration-100',
-        live ? 'bg-primary/70 opacity-100' : 'bg-primary/40 opacity-0 group-hover:opacity-100')} />
-      <i className={cn('pointer-events-none absolute right-[1px] top-1/2 h-9 w-[3px] -translate-y-1/2 rounded-full transition-colors duration-100',
-        live ? 'bg-primary' : 'bg-muted-foreground/35 group-hover:bg-primary/70')} />
+      <i className={cn('pointer-events-none absolute inset-y-0 right-0 w-[3px] rounded-full transition-opacity duration-150',
+        live ? 'bg-primary/70 opacity-100' : 'opacity-0')} />
     </span>
   );
 }

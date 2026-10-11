@@ -4,7 +4,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   AppAbout, ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
-  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState, UpdateCheck,
+  IpcResult, LaunchPayload, ProgressEvent, ScanProgress, Settings, ShellState, UpdateCheck,
 } from '../shared/types';
 
 type Unsub = () => void;
@@ -103,6 +103,13 @@ const api = {
     const h = (_e: unknown, ev: ProgressEvent) => fn(ev);
     ipcRenderer.on('tz:progress', h);
     return () => ipcRenderer.off('tz:progress', h);
+  },
+
+  /* 磁盘扫描进度流(「我的压缩包」页动画/进度数据源) */
+  onScanProgress: (fn: (p: ScanProgress) => void): Unsub => {
+    const h = (_e: unknown, p: ScanProgress) => fn(p);
+    ipcRenderer.on('tz:scan-progress', h);
+    return () => ipcRenderer.off('tz:scan-progress', h);
   },
 
   /* 拖拽文件 → 绝对路径 */

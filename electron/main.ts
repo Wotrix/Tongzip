@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type {
   AppAbout, ArchiveFile, CompressJob, ExtractJob, ExtractStart, FolderEntry, IpcResult, LaunchPayload,
-  ProgressEvent, Settings, UpdateCheck,
+  ProgressEvent, ScanProgress, Settings, UpdateCheck,
 } from '../shared/types';
 import { ERR, isArchiveExt } from '../shared/types';
 import {
@@ -61,6 +61,8 @@ const DEFAULTS: Settings = {
   sidebarWidth: 156,
   sidebarCollapsed: false,
   treeWidth: 160,
+  browseDetails: true,
+  browseTreeRail: false,
   listColumnWidths: {},
   hiddenColumns: [],
 };
@@ -313,17 +315,24 @@ function wrap<A extends unknown[], T>(fn: (...args: A) => Promise<T> | T) {
   };
 }
 
-/** 扫描常用目录中的压缩包(深度≤2,上限 120,按修改时间倒序) — 「我的压缩包」页数据源 */
+/** 扫描常用目录中的压缩包(深度≤2,上限 120,按修改时间倒序) — 「我的压缩包」页数据源。
+ *  异步逐目录推进并回调 onProgress:同步一次性扫描无法报进度,且大目录会阻塞主进程事件循环;
+ *  每发现一批/切一个顶层目录就 setImmediate 让行,IPC 进度事件才能及时刷到渲染层 */
 function fmtMtime(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
-async function scanArchives(): Promise<ArchiveFile[]> {
-  const roots = ['desktop', 'documents', 'downloads']
-    .map((n) => { try { return app.getPath(n as 'desktop'); } catch { return null; } })
-    .filter((p): p is string => !!p);
+const tick = () => new Promise<void>((r) => setImmediate(r));
+async function scanArchives(onProgress?: (p: ScanProgress) => void): Promise<ArchiveFile[]> {
+  const rootDefs = [['desktop', '桌面'], ['documents', '文档'], ['downloads', '下载']] as const;
+  const roots: { name: string; path: string }[] = [];
+  for (const [key, label] of rootDefs) {
+    try { const p = app.getPath(key); if (p) roots.push({ name: label, path: p }); } catch { /* 该目录不可用则跳过 */ }
+  }
+  const total = roots.length;
   const out: ArchiveFile[] = [];
-  const walk = (dir: string, depth: number) => {
+  onProgress?.({ phase: 'start', rootsDone: 0, rootsTotal: total, current: '', found: 0 });
+  const walk = async (dir: string, depth: number): Promise<void> => {
     if (depth > 2 || out.length >= 120) return;
     let items: fs.Dirent[];
     try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -331,16 +340,22 @@ async function scanArchives(): Promise<ArchiveFile[]> {
       if (out.length >= 120) return;
       if (it.name.startsWith('.')) continue;
       const full = path.join(dir, it.name);
-      if (it.isDirectory()) { walk(full, depth + 1); continue; }
+      if (it.isDirectory()) { await walk(full, depth + 1); continue; }
       const dot = it.name.lastIndexOf('.');
       if (dot < 0 || !isArchiveExt(it.name.slice(dot + 1))) continue;
       try {
         const st = fs.statSync(full);
         out.push({ path: full, name: it.name, size: st.size, mtime: fmtMtime(st.mtime) });
+        if (out.length % 16 === 0) await tick();
       } catch { /* 跳过无法读取的文件 */ }
     }
   };
-  for (const r of roots) walk(r, 0);
+  for (let r = 0; r < roots.length; r++) {
+    onProgress?.({ phase: 'scanning', rootsDone: r, rootsTotal: total, current: roots[r].name, found: out.length });
+    await walk(roots[r].path, 0);
+    await tick();
+  }
+  onProgress?.({ phase: 'done', rootsDone: total, rootsTotal: total, current: '', found: out.length });
   return out.sort((a, b) => b.mtime.localeCompare(a.mtime));
 }
 
@@ -596,7 +611,13 @@ function installIpc(): void {
   ipcMain.handle('tz:quick-dest', (_e, archive: string) => quickExtractDest(archive));
   ipcMain.handle('tz:infer-format', (_e, output: string) => inferFormat(output));
   ipcMain.handle('tz:exists', (_e, p: string) => fs.existsSync(p));
-  ipcMain.handle('tz:scan-archives', wrap(() => scanArchives()));
+  ipcMain.handle('tz:scan-archives', async (e): Promise<IpcResult<ArchiveFile[]>> => {
+    /* 进度回推到发起本次扫描的窗口(渲染层订阅 tz:scan-progress 显示动画/进度) */
+    try {
+      const data = await scanArchives((p) => { if (!e.sender.isDestroyed()) e.sender.send('tz:scan-progress', p); });
+      return ok(data);
+    } catch (err) { return fail(err); }
+  });
 }
 
 /* ------------------------------------------------------------------ */

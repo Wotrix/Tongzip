@@ -3,7 +3,6 @@
  */
 import { useEffect, useState } from 'react';
 import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn, IconReveal, IconCopy, IconDelete } from '../components/icons';
-import AppLogo from '../components/AppLogo';
 import FileGlyph from '../components/FileGlyph';
 import { ContextMenu, useTaskHub, useToast, type DoneJob } from '../components/ui';
 import { RunningCard, useTaskMenu, revealArchive } from '../components/TaskCenter';
@@ -76,39 +75,37 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
     <div className={cn('min-h-0 flex-1 justify-center overflow-auto bg-background px-8 pt-9 pb-14 flex',
       bothHidden && '[align-items:safe_center]')}>
       <div className="mx-auto w-[880px] max-w-full">
-        <div className="mb-[22px] flex items-center gap-3">
-          <AppLogo className="size-[40px] shrink-0" />
-          <div>
-            <h1 className="text-[22px] font-bold tracking-[.01em] text-foreground">欢迎使用 TongZip</h1>
-            <p className="mt-[5px] text-[13px] text-muted-foreground">压缩、解压与文件管理,在这一处完成。</p>
-          </div>
+        {/* 欢迎区无图标规范:纯文字标题块,左缘与下方快捷卡对齐 */}
+        <div className="mb-[22px]">
+          <h1 className="text-[22px] font-bold tracking-[.01em] text-foreground">欢迎使用 TongZip</h1>
+          <p className="mt-[5px] text-[13px] text-muted-foreground">压缩、解压与文件管理,在这一处完成。</p>
         </div>
 
         <div className="grid grid-cols-3 gap-3">
           <button className={cn(
-            'flex flex-col gap-2.5 rounded-lg border border-transparent p-4 text-left',
+            'flex flex-col gap-2.5 rounded-[16px] border border-transparent p-4 text-left',
             'bg-primary text-primary-foreground transition-[background,transform] duration-150 hover:bg-primary/90 active:scale-[.995]',
           )} onClick={(e) => {
             const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
             setPickMenu({ x: r.left + 16, y: r.bottom + 4 });
           }}>
-            <span className="flex size-[30px] items-center justify-center rounded-md bg-white/[.18] [&_svg]:size-4 [&_svg]:text-primary-foreground"><IconArchive /></span>
+            <span className="flex size-[30px] items-center justify-center rounded-[10px] bg-white/[.18] [&_svg]:size-4 [&_svg]:text-primary-foreground"><IconArchive /></span>
             <b className="text-[13.5px] font-semibold">压缩</b>
             <small className="text-[11.5px] leading-[1.45] opacity-[.78]">选文件或文件夹即压;若选的全是压缩包则自动转为解压</small>
           </button>
           <button className={cn(
-            'flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4 text-left',
+            'flex flex-col gap-2.5 rounded-[16px] border border-border bg-card p-4 text-left',
             'transition-[border-color,background,transform] duration-150 hover:border-input hover:bg-secondary active:scale-[.995]',
           )} onClick={onExtract}>
-            <span className="flex size-[30px] items-center justify-center rounded-md bg-primary/10 [&_svg]:size-4 [&_svg]:text-primary"><IconExtract /></span>
+            <span className="flex size-[30px] items-center justify-center rounded-[10px] bg-primary/10 [&_svg]:size-4 [&_svg]:text-primary"><IconExtract /></span>
             <b className="text-[13.5px] font-semibold">解压</b>
             <small className="text-[11.5px] leading-[1.45] text-muted-foreground">选压缩包即解;非压缩包自动转为压缩</small>
           </button>
           <button className={cn(
-            'flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4 text-left',
+            'flex flex-col gap-2.5 rounded-[16px] border border-border bg-card p-4 text-left',
             'transition-[border-color,background,transform] duration-150 hover:border-input hover:bg-secondary active:scale-[.995]',
           )} onClick={onOpenPick}>
-            <span className="flex size-[30px] items-center justify-center rounded-md bg-primary/10 [&_svg]:size-4 [&_svg]:text-primary"><IconFolderOpen /></span>
+            <span className="flex size-[30px] items-center justify-center rounded-[10px] bg-primary/10 [&_svg]:size-4 [&_svg]:text-primary"><IconFolderOpen /></span>
             <b className="text-[13.5px] font-semibold">打开压缩包</b>
             <small className="text-[11.5px] leading-[1.45] text-muted-foreground">浏览内容,挑选单个文件再解压</small>
           </button>

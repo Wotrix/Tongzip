@@ -7,7 +7,7 @@ import { RunningCard, HistoryRow } from '../components/TaskCenter';
 import { Button } from '../components/ui/button';
 import { cn } from '@/lib/utils';
 
-export default function TasksPage() {
+export default function TasksPage({ openArchive }: { openArchive?: (path: string) => void }) {
   const { jobs, history, clearHistory } = useTaskHub();
   const [tab, setTab] = useState<'running' | 'done'>('running');
 
@@ -48,7 +48,7 @@ export default function TasksPage() {
                   <span>最近 {history.length} 条记录(仅本次会话)</span>
                   <Button variant="ghost" size="sm" className="h-[27px] gap-[7px] px-[9px] text-xs font-normal" onClick={clearHistory}>清空</Button>
                 </div>
-                {history.map((h) => <HistoryRow key={h.taskId + h.at} h={h} />)}
+                {history.map((h) => <HistoryRow key={h.taskId + h.at} h={h} onOpen={openArchive} />)}
               </div>
             ))}
         </div>

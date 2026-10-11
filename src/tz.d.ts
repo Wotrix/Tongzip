@@ -2,7 +2,7 @@
 
 import type {
   AppAbout, ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
-  IpcResult, LaunchPayload, ProgressEvent, Settings, ShellState, UpdateCheck,
+  IpcResult, LaunchPayload, ProgressEvent, ScanProgress, Settings, ShellState, UpdateCheck,
 } from '@shared/types';
 
 declare global {
@@ -53,6 +53,7 @@ declare global {
       getLaunchPayload(): Promise<LaunchPayload | null>;
       onLaunch(fn: (p: LaunchPayload) => void): () => void;
       onProgress(fn: (ev: ProgressEvent) => void): () => void;
+      onScanProgress(fn: (p: ScanProgress) => void): () => void;
       pathForFile(file: File): string;
       defaultOutput(sources: string[]): Promise<string>;
       quickDest(archive: string): Promise<string>;
