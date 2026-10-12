@@ -3,7 +3,7 @@
 import {
   AppWindow, Archive, Bell, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Code, Copy,
   Disc3, Eye, ExternalLink, File, FileAudio, FileVideo, FileSpreadsheet, FileText, FileType, Folder, FolderDown, FolderOpen, FolderTree, FolderUp,
-  Home, Image, ListChecks, Lock, Minus, Monitor, Moon, MoreHorizontal, OctagonX, PanelLeft, PanelRight,
+  Home, Image, Link, ListChecks, Lock, Minus, Monitor, Moon, MoreHorizontal, MousePointer2, OctagonX, PanelLeft, PanelRight,
   Pause, Pencil, Pin, PinOff, Play, Plus, Presentation, RefreshCw, Search, Settings, Shrink, SlidersHorizontal, Square, Sun,
   Trash2, TriangleAlert, LoaderCircle, X,
   type LucideIcon,
@@ -83,6 +83,9 @@ export const IconSearch = mk(Search);
 /** 在资源管理器中显示 */
 export const IconReveal = mk(FolderOpen);
 export const IconOpen = mk(ExternalLink);
+/** 文件关联(链条)与右键菜单(鼠标指针),供设置页分类导航 */
+export const IconLink = mk(Link);
+export const IconPointer = mk(MousePointer2);
 export const IconSpinner = mk(LoaderCircle);
 export const IconSun = mk(Sun);
 export const IconMoon = mk(Moon);
