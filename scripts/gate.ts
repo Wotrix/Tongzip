@@ -84,7 +84,10 @@ function selftest(): void {
 
 function buildAndDist(): void {
   runChecked('vite build', nodeBin, [viteBin, 'build'], 300_000);
-  runChecked('electron-builder', nodeBin, [builderCli, '--win'], 900_000);
+  /* --publish never:GitHub Actions 环境会检测到 GITHUB_* 变量隐式走发布路径,
+     产物建完后报 "GitHub Personal Access Token is not set" 退出 1(CI 实测);
+     质量门禁只验产物,发布属后续单独动作 */
+  runChecked('electron-builder', nodeBin, [builderCli, '--win', '--publish', 'never'], 900_000);
 }
 
 function auditArtifacts(): void {
