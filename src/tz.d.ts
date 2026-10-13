@@ -2,7 +2,7 @@
 
 import type {
   AppAbout, ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
-  IpcResult, LaunchPayload, ProgressEvent, ScanProgress, Settings, ShellState, UpdateCheck,
+  IpcResult, LaunchPayload, PersistedTask, ProgressEvent, ScanProgress, Settings, ShellState, TxnRecoveryInfo, UpdateCheck,
 } from '@shared/types';
 
 declare global {
@@ -14,7 +14,7 @@ declare global {
       compress(job: CompressJob): Promise<IpcResult<{ taskId: string }>>;
       extract(job: ExtractJob): Promise<IpcResult<ExtractStart>>;
       test(archive: string, password?: string): Promise<IpcResult<{ taskId: string }>>;
-      deleteEntries(archive: string, entries: string[]): Promise<IpcResult<{ taskId: string }>>;
+      deleteEntries(archive: string, entries: string[], password?: string): Promise<IpcResult<{ taskId: string }>>;
       renameArchive(archive: string, newName: string): Promise<IpcResult<{ newPath: string }>>;
       cancelTask(taskId: string): Promise<IpcResult<boolean>>;
       taskPause(taskId: string): Promise<IpcResult<boolean>>;
@@ -46,6 +46,9 @@ declare global {
       taskSnapshot(): Promise<ProgressEvent[]>;
       taskPaths(): Promise<Record<string, { archive?: string; output?: string; dest?: string }>>;
       taskPathSet(taskId: string, p: { archive?: string; output?: string; dest?: string }): Promise<boolean>;
+      /** 持久化任务历史(已过启动恢复状态机);清空同步落盘 */
+      historyGet(): Promise<PersistedTask[]>;
+      historyClear(): Promise<boolean>;
       listDir(dir: string): Promise<IpcResult<FolderEntry[]>>;
       openPath(p: string): Promise<IpcResult<void>>;
       trash(paths: string[]): Promise<IpcResult<void>>;
@@ -54,6 +57,8 @@ declare global {
       onLaunch(fn: (p: LaunchPayload) => void): () => void;
       onProgress(fn: (ev: ProgressEvent) => void): () => void;
       onScanProgress(fn: (p: ScanProgress) => void): () => void;
+      /** 归档修改事务启动恢复通知(崩溃遗留的还原/清理结果) */
+      onTxnRecovery(fn: (info: TxnRecoveryInfo) => void): () => void;
       pathForFile(file: File): string;
       defaultOutput(sources: string[]): Promise<string>;
       quickDest(archive: string): Promise<string>;

@@ -1,0 +1,42 @@
+# 阶段 3.5 — 自动化质量门禁
+# 全部检查只能在 Windows 验证(打包产物、真实进程崩溃演练、taskkill/CIM),
+# 因此唯一 runner 定为 windows-latest:不在其他平台"假装通过",平台不符直接失败。
+# 本地等价命令:npm run gate(六步:typecheck → selftest → 打包 → 产物核查 → 崩溃演练 → 依赖审计)
+name: Quality Gate
+
+on:
+  push:
+    branches: [feat/shadcn-migration]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: windows-latest
+    timeout-minutes: 90 # 打包+崩溃演练本身有步骤级硬超时,这里是作业级保险丝
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # selftest/crash 以 Node 直跑真实模块,需 ≥22 的全局 fetch/WebSocket
+          cache: npm
+
+      # electron/electron-builder 装依赖要拉二进制;镜像源由仓库 .npmrc 统一指定
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run gate (6 steps)
+        run: npm run gate
+
+      # 门禁失败时保留产物便于取证(崩溃演练超时最常见的原因是产物缺失/过期)
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            release/*.exe
+            release/win-unpacked/resources/engine/7za.exe
+          if-no-files-found: warn
+          retention-days: 7

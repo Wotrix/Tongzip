@@ -2,7 +2,7 @@
  * Home 首页 — 欢迎标题 · 三快捷卡(首卡实心主色)· 最近打开(带体积)· 最近任务(带进度条)
  */
 import { useEffect, useState } from 'react';
-import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn, IconReveal, IconCopy, IconDelete } from '../components/icons';
+import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn, IconClock, IconReveal, IconCopy, IconDelete } from '../components/icons';
 import FileGlyph from '../components/FileGlyph';
 import { ContextMenu, useTaskHub, useToast, type DoneJob } from '../components/ui';
 import { RunningCard, useTaskMenu, revealArchive } from '../components/TaskCenter';
@@ -195,15 +195,19 @@ function DoneTaskRow({ h }: { h: DoneJob }) {
     <div className={cn(
       'group flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
       'transition-colors hover:bg-accent active:bg-[var(--bg-active)] [&_svg]:size-[15px] [&_svg]:shrink-0',
-      h.status !== 'done' && 'text-destructive',
+      h.status !== 'done' && h.status !== 'interrupted' && h.status !== 'retryable' && 'text-destructive',
+      h.status === 'interrupted' && 'text-[color:var(--warn)]',
     )} {...bind}>
       {menu}
       {h.status === 'done'
         ? <IconCheckCircle className="text-primary" />
-        : <IconWarn className="text-destructive" />}
+        : h.status === 'interrupted' || h.status === 'retryable'
+          ? <IconClock />
+          : <IconWarn className="text-destructive" />}
       <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
         {h.kind === 'compress' ? '压缩' : h.kind === 'extract' ? '解压' : h.kind === 'test' ? '测试' : '删除'}
-        {h.status === 'done' ? '完成' : h.status === 'error' ? '失败' : '已取消'}
+        {h.status === 'done' ? '完成' : h.status === 'error' ? '失败' : h.status === 'cancelled' ? '已取消'
+          : h.status === 'interrupted' ? '上次运行中断' : '可重试'}
         {h.label ? ` · ${h.label}` : ''}
       </span>
       <span className="shrink-0 text-[11.5px] text-muted-foreground">{new Date(h.at).toLocaleTimeString()}</span>

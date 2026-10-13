@@ -19,10 +19,11 @@ import type {
   EngineInfo,
   EntryPreview,
   ExtractJob,
+  GuardLimits,
   JobKind,
   ProgressEvent,
 } from '../shared/types';
-import { ERR, isArchiveExt } from '../shared/types';
+import { DEFAULT_GUARD, ERR, isArchiveExt } from '../shared/types';
 
 /* ------------------------------------------------------------------ */
 /* 引擎定位                                                            */
@@ -319,10 +320,13 @@ export async function listArchive(archive: string, password?: string): Promise<A
 
 function probeArgs(args: string[]): Promise<{ stdout: string }> {
   return new Promise((resolve, reject) => {
-    execFile(engineExe(), args, { windowsHide: true, maxBuffer: 128 * 1024 * 1024, encoding: 'buffer' }, (err, stdout) => {
+    const cp = execFile(engineExe(), args, { windowsHide: true, maxBuffer: 128 * 1024 * 1024, encoding: 'buffer' }, (err, stdout) => {
       const text = decodeEngineOutput(Buffer.isBuffer(stdout) ? stdout : Buffer.alloc(0));
       if (err) reject(Object.assign(err, { stdout: text })); else resolve({ stdout: text });
     });
+    /* 与 runStep 同理必须立即 EOF stdin:加密头包无密码列表时引擎打"Enter password"
+       等交互输入,execFile 的 stdin 管道常开=主进程侧永久挂起(阶段 3.3 PW3 实测) */
+    cp.stdin?.end();
   });
 }
 
@@ -369,6 +373,11 @@ function parseSlt(stdout: string): ArchiveInfo {
     const packed = Number((b['Packed Size'] ?? '').replace(/[^\d]/g, '')) || 0;
     const enc = (b['Encrypted'] ?? '').trim() === '+';
     if (enc) hasEncrypted = true;
+    /* 链接条目识别(实测 7za 21.07 tar 列表):Mode 以 'l' 开头或 Symbolic/Hard Link 字段非空;
+       链接可指向解压目录外,资源防护默认一律拒绝(阶段 3.2) */
+    const mode = (b['Mode'] ?? '').trim();
+    const linkTo = (b['Symbolic Link'] ?? '').trim() || (b['Hard Link'] ?? '').trim();
+    const isLink = /^l/.test(mode) || linkTo !== '';
     const slash = p.lastIndexOf('/');
     entries.push({
       path: p,
@@ -379,6 +388,7 @@ function parseSlt(stdout: string): ArchiveInfo {
       packed,
       mtime: (b['Modified'] ?? '').trim(),
       encrypted: enc,
+      ...(isLink ? { isLink: true, linkTo } : {}),
     });
   }
   return { type, physSize, entries, hasEncrypted };
@@ -477,6 +487,401 @@ function zipCentralTimes(archive: string): Map<string, string> {
 }
 
 /* ------------------------------------------------------------------ */
+/* 归档修改事务(阶段 3.1)                                             */
+/* 就地修改(d / a 到既有归档)一律在同目录副本上进行:预检空间 → 复制 → */
+/* 引擎只碰副本 → 结构+完整性校验 → swap 替换 → 删备份;任一环节失败   */
+/* 都丢弃副本、原归档零改动。journal 落 userData,进程崩溃由启动恢复兜底 */
+/* ------------------------------------------------------------------ */
+
+const TXN_TMP_EXT = '.tztmp';
+const TXN_BAK_EXT = '.tzbak';
+/** 修改既有归档:完整性测试上限(用户数据,宁慢必测) */
+const TXN_MODIFY_TEST_MAX = 2 * 1024 ** 3;
+/** 新建归档:测试上限(避免大包压缩后再等一遍全解,结构校验仍必做) */
+const TXN_CREATE_TEST_MAX = 512 * 1024 ** 2;
+
+interface TxnRecord {
+  id: string;
+  /** 原归档(替换目标);kind=extract 时为解压目标目录(仅作定位,恢复绝不删它) */
+  archive: string;
+  /** 同目录临时副本(.tztmp),引擎实际修改的对象;kind=extract 时为解压暂存目录 */
+  tmp: string;
+  /** 原归档备份(.tzbak),仅替换窗口期存在 */
+  backup?: string;
+  /** staged=副本修改中; swapping=正在替换原归档; committed=替换完成待清备份 */
+  stage: 'staged' | 'swapping' | 'committed';
+  /** modify=归档修改事务(3.1);extract=解压暂存(3.2),崩溃遗留的暂存目录整体可删 */
+  kind?: 'modify' | 'extract';
+  at: number;
+}
+
+let txnJournalFile = path.join(os.tmpdir(), 'TongZip', 'txn-journal.json');
+/** 主进程把 journal 指向 userData;默认落临时目录,保证 selftest 在纯 node 可跑 */
+export function configureTxnJournal(file: string): void { txnJournalFile = file; }
+
+function readTxnJournal(): TxnRecord[] {
+  try {
+    const j = JSON.parse(fs.readFileSync(txnJournalFile, 'utf8')) as { records?: unknown };
+    return Array.isArray(j.records) ? (j.records as TxnRecord[]) : [];
+  } catch { return []; }
+}
+function writeTxnJournal(records: TxnRecord[]): void {
+  try {
+    fs.mkdirSync(path.dirname(txnJournalFile), { recursive: true });
+    fs.writeFileSync(txnJournalFile, JSON.stringify({ v: 1, records }, null, 2), 'utf8');
+  } catch { /* journal 写失败不阻断操作,代价是崩溃恢复能力下降 */ }
+}
+function txnUpsert(rec: TxnRecord): void {
+  const rs = readTxnJournal().filter((r) => r.id !== rec.id);
+  rs.push(rec);
+  writeTxnJournal(rs);
+}
+function txnRemove(id: string): void {
+  writeTxnJournal(readTxnJournal().filter((r) => r.id !== id));
+}
+
+/** 目录所在卷剩余可写字节;无法判定返回 -1(不拦截) */
+function freeBytesAt(dir: string): number {
+  try { const s = fs.statfsSync(dir); return s.bsize * s.bavail; } catch { return -1; }
+}
+export function checkFreeSpace(dir: string, needBytes: number): boolean {
+  const f = freeBytesAt(dir);
+  return f < 0 || f >= needBytes;
+}
+
+/** 复制原归档为同目录临时副本并登记事务;此后一切修改只触碰副本。同卷 staging 也规避了跨卷 rename 失败 */
+export function stageForModify(archive: string, uid: string): { tmp: string } {
+  const dir = path.dirname(archive);
+  const size = fs.statSync(archive).size;
+  /* 副本本身 + 重打包峰值余量 */
+  if (!checkFreeSpace(dir, Math.ceil(size * 1.2) + 64 * 1024 * 1024)) {
+    throw new EngineError(ERR.SPACE_LOW, '目标磁盘空间不足,无法安全修改压缩包(需要在同目录创建归档副本再替换)。');
+  }
+  const tmp = path.join(dir, `${path.basename(archive)}.${uid}${TXN_TMP_EXT}`);
+  fs.copyFileSync(archive, tmp);
+  txnUpsert({ id: uid, archive, tmp, stage: 'staged', at: Date.now() });
+  return { tmp };
+}
+
+/** 校验产物:结构可读必做;不超过阈值时再做全量完整性测试(密码用于加密头/加密条目场景) */
+export async function verifyArchiveArtifact(
+  file: string, password?: string, testLimit = TXN_MODIFY_TEST_MAX,
+): Promise<void> {
+  try {
+    await listArchive(file, password);
+  } catch (e) {
+    if (e instanceof EngineError && e.code === ERR.NEED_PASSWORD) throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new EngineError(ERR.VERIFY_FAILED, `归档结构校验失败,修改未生效,原压缩包保持原样(${msg})`);
+  }
+  let size = Infinity;
+  try { size = fs.statSync(file).size; } catch { /* stat 失败交由后续替换环节报错 */ }
+  if (size <= testLimit) {
+    const args = ['t', '-y'];
+    if (password) args.push(`-p${password}`);
+    args.push(file);
+    try {
+      await probeArgs(args);
+    } catch (err) {
+      const t = (err as { stdout?: string }).stdout ?? '';
+      throw new EngineError(ERR.VERIFY_FAILED, `完整性校验失败,修改未生效,原压缩包保持原样(${interpretFailure(2, t).message})`);
+    }
+  }
+}
+
+/**
+ * 把临时副本安全落成目标归档:
+ * - 目标不存在 → 直接挪位;
+ * - 目标存在 → rename 备份 → rename 就位,任一步失败可还原;双失败时保留 journal 交启动恢复。
+ * 本函数自行管理 journal 归属,调用方失败后不得再盲清 tmp。
+ */
+export function commitTxnSwap(archive: string, tmp: string, uid: string): void {
+  if (!fs.existsSync(archive)) {
+    try { fs.renameSync(tmp, archive); return; }
+    catch (e) {
+      if (!fs.existsSync(archive)) {
+        txnRemove(uid);
+        try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ }
+        throw new EngineError(ERR.TXN_FAILED, `写入目标压缩包失败:${(e as Error).message}`);
+      }
+      /* 挪位瞬间目标被别人创建:继续走 swap,现有文件受备份保护 */
+    }
+  }
+  const backup = path.join(path.dirname(archive), `${path.basename(archive)}.${uid}${TXN_BAK_EXT}`);
+  txnUpsert({ id: uid, archive, tmp, backup, stage: 'swapping', at: Date.now() });
+  try {
+    fs.renameSync(archive, backup);
+  } catch (e) {
+    txnRemove(uid);
+    try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ }
+    throw new EngineError(ERR.TXN_FAILED, `无法替换原压缩包(文件可能被占用),已保持原样:${(e as Error).message}`);
+  }
+  try {
+    fs.renameSync(tmp, archive);
+  } catch (e) {
+    let rolledBack = false;
+    try { fs.renameSync(backup, archive); rolledBack = true; txnRemove(uid); } catch { /* 回滚也失败:保留 journal,启动恢复 */ }
+    if (rolledBack) { try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ } }
+    throw new EngineError(ERR.TXN_FAILED, `压缩包替换失败,${rolledBack ? '原文件已还原' : '原文件已由备份保护'}:${(e as Error).message}`);
+  }
+  txnUpsert({ id: uid, archive, tmp, backup, stage: 'committed', at: Date.now() });
+  try { fs.rmSync(backup, { force: true }); } catch { /* 备份删除失败由启动回收兜底 */ }
+  txnRemove(uid);
+}
+
+/** 事务失败/取消:丢弃副本并注销 journal(原归档从未被触碰) */
+export function abortTxn(uid: string, tmp?: string): void {
+  if (tmp) { try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ } }
+  txnRemove(uid);
+}
+
+/**
+ * 启动恢复:处理上次进程崩溃遗留的事务。
+ * swapping 半态优先还原原归档;staged/committed 只清残留副本与备份。
+ * 单项失败保留其 journal 记录,下次启动再试。
+ */
+export function recoverStaleTransactions(): { restored: string[]; cleaned: string[] } {
+  const restored: string[] = [];
+  const cleaned: string[] = [];
+  const records = readTxnJournal();
+  if (!records.length) return { restored, cleaned };
+  const remaining: TxnRecord[] = [];
+  for (const r of records) {
+    try {
+      /* 解压暂存(kind=extract):目录整体是本任务生成的可丢弃产物,一律删除;
+         目标目录(dest)可能已部分提交,属用户数据,绝不触碰 */
+      if (r.kind === 'extract') {
+        if (fs.existsSync(r.tmp)) { fs.rmSync(r.tmp, { recursive: true, force: true }); cleaned.push(r.tmp); }
+        continue;
+      }
+      const hasArchive = fs.existsSync(r.archive);
+      const hasBackup = !!r.backup && fs.existsSync(r.backup);
+      const hasTmp = fs.existsSync(r.tmp);
+      if (r.stage === 'swapping') {
+        /* 原归档没了但备份在:替换中途崩溃 → 还原原件 */
+        if (!hasArchive && hasBackup) { fs.renameSync(r.backup!, r.archive); restored.push(r.archive); }
+        else if (hasArchive && hasBackup) fs.rmSync(r.backup!, { force: true }); // 替换已完成,备份多余
+        if (hasTmp) { fs.rmSync(r.tmp, { force: true }); cleaned.push(r.tmp); }
+      } else if (r.stage === 'staged') {
+        if (hasTmp) { fs.rmSync(r.tmp, { force: true }); cleaned.push(r.tmp); }
+      } else { // committed:仅可能剩没删掉的备份
+        if (hasBackup) { fs.rmSync(r.backup!, { force: true }); cleaned.push(r.backup!); }
+        if (hasTmp) { fs.rmSync(r.tmp, { force: true }); cleaned.push(r.tmp); }
+      }
+    } catch { remaining.push(r); }
+  }
+  writeTxnJournal(remaining);
+  return { restored, cleaned };
+}
+
+/* ------------------------------------------------------------------ */
+/* 资源防护(阶段 3.2)                                                  */
+/* 三层防线:① 静态预检(条目名/链接/声明量/压缩比/空间)→ ② 隔离暂存    */
+/* (解压只进 dest 旁的隐藏暂存目录,失败/熔断整体丢弃)→ ③ 执行中看门狗  */
+/* (真实落盘量/文件数/链接/时长/剩余空间,越界即 SIGKILL)。             */
+/* 声明值可伪造,预检只是第一道;commit 前再做一次链接扫描兜底。          */
+/* ------------------------------------------------------------------ */
+
+let guard: GuardLimits = { ...DEFAULT_GUARD };
+/** 主进程在启动与 settings 变更后灌入上限覆盖;缺省回落安全默认值 */
+export function configureGuard(patch?: Partial<GuardLimits> | null): GuardLimits {
+  guard = { ...DEFAULT_GUARD, ...(patch ?? {}) };
+  return { ...guard };
+}
+export function currentGuard(): GuardLimits { return { ...guard }; }
+
+/** Windows 保留设备名(CON/PRN/AUX/NUL/COM1-9/LPT1-9,含带扩展名形态) */
+const DOS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.[^.]*)?$/i;
+
+/**
+ * 归档条目名 → 安全相对路径段数组;null = 危险条目。
+ * 拦截:路径穿越(..)、绝对路径/盘符/UNC、NTFS 数据流冒号(可静默注入既有文件的 ADS)、
+ * 控制字符、保留设备名、异常目录深度。
+ * '*'?'<' 等 Windows 非法字符不拦:它们不构成逃逸面,7za 落盘时自有替换(实测 C:/→C_\),
+ * 整包拒绝反而误伤合法归档(实测 21.07 CON.dat→_CON.dat)。
+ */
+export function sanitizeEntryPath(raw: string): string[] | null {
+  const unified = raw.replace(/\\/g, '/');
+  if (unified.startsWith('//')) return null; // UNC
+  if (/^[a-zA-Z]:/.test(unified)) return null; // 盘符绝对路径
+  const segs = unified.split('/');
+  if (segs[0] === '') return null; // /abs 风格绝对路径
+  const out: string[] = [];
+  for (const s of segs) {
+    if (!s || s === '.') continue;
+    if (s === '..') return null;
+    if (s.includes(':')) return null;
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f]/.test(s)) return null;
+    if (DOS_RESERVED.test(s)) return null;
+    out.push(s);
+    if (out.length > 32) return null; // 超出 MAX_PATH 风险的异常深度
+  }
+  return out.length ? out : null;
+}
+
+/** 首个已存在的祖先目录(statfs 需真实路径,深路径 dest 尚不存在时向上取) */
+function existingAncestor(p: string): string {
+  let d = path.resolve(p);
+  while (!fs.existsSync(d) && d !== path.dirname(d)) d = path.dirname(d);
+  return d;
+}
+
+interface TreeStats { files: number; bytes: number; links: number }
+
+/** 递归量测目录真实落地量;超过任一 cap 提前返回(truncated 语义由调用方按数值判断) */
+function measureTree(dir: string, capFiles: number, capBytes: number): TreeStats {
+  const acc: TreeStats = { files: 0, bytes: 0, links: 0 };
+  const walk = (d: string) => {
+    let items: fs.Dirent[];
+    try { items = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const it of items) {
+      const fp = path.join(d, it.name);
+      if (it.isSymbolicLink()) { acc.links++; }
+      else if (it.isDirectory()) { walk(fp); }
+      else if (it.isFile()) {
+        acc.files++;
+        try { acc.bytes += fs.statSync(fp).size; } catch { /* 写入中的瞬时 stat 失败忽略 */ }
+      }
+      if (acc.files > capFiles || acc.bytes > capBytes) return; // 越界早停
+    }
+  };
+  walk(dir);
+  return acc;
+}
+
+/** 选择器匹配:空选择=全量;前缀语义与 extractConflicts 一致 */
+function selectedEntries(job: ExtractJob, info: ArchiveInfo): ArchiveEntry[] {
+  const sels = (job.entries ?? []).map((s) => s.replace(/\/+$/, ''));
+  return !sels.length ? info.entries
+    : info.entries.filter((e) => sels.some((s) => e.path === s || e.path.startsWith(`${s}/`)));
+}
+
+/**
+ * 静态预检:声明值不可全信(伪造由看门狗兜底),但能拦掉绝大多数恶意包于写盘之前。
+ * info=null(列表不可读)时跳过静态项,执行中监控与 commit 前扫描仍然生效。
+ */
+export function preflightExtract(job: ExtractJob, info: ArchiveInfo | null): void {
+  if ((job.nestDepth ?? 0) > guard.maxNestDepth) {
+    throw new EngineError(ERR.GUARD_LIMIT, `嵌套归档深度超过上限(${guard.maxNestDepth}),已阻止。`);
+  }
+  if (!info) return;
+  const targets = selectedEntries(job, info);
+  if (targets.length > guard.maxEntries) {
+    throw new EngineError(ERR.GUARD_LIMIT, `归档条目数 ${targets.length} 超过防护上限 ${guard.maxEntries},解压未启动。`);
+  }
+  let total = 0;
+  const seen = new Map<string, string>(); // 规范化落点 → 首个条目名(不同条目塌缩到同一文件=静默覆盖)
+  for (const e of targets) {
+    const parts = sanitizeEntryPath(e.path);
+    if (!parts) throw new EngineError(ERR.UNSAFE_PATH, `归档包含危险条目名,解压已阻止:${e.path}`);
+    if (e.isLink) throw new EngineError(ERR.UNSAFE_PATH, `归档包含链接条目(默认阻止,可指向目录外):${e.path}${e.linkTo ? ` → ${e.linkTo}` : ''}`);
+    if (e.isDir) continue;
+    if (e.size > guard.maxFileBytes) {
+      throw new EngineError(ERR.GUARD_LIMIT, `单文件声明体积超过上限:${e.path}`);
+    }
+    total += e.size;
+    const key = parts.join('/').toLowerCase();
+    const prev = seen.get(key);
+    if (prev && prev !== e.path) {
+      throw new EngineError(ERR.UNSAFE_PATH, `两个条目指向同一落地文件,拒绝后写覆盖先写:${prev} / ${e.path}`);
+    }
+    seen.set(key, e.path);
+  }
+  if (total > guard.maxTotalBytes) {
+    throw new EngineError(ERR.GUARD_LIMIT, `声明总解压体积超过上限(${Math.round(guard.maxTotalBytes / 1024 ** 3)} GiB),解压未启动。`);
+  }
+  /* 压缩比只在大体量声明时才作为炸弹信号:文本/备份类正常文件高压缩比很常见,不能单独定罪 */
+  if (info.physSize > 0 && total > guard.ratioMinDeclared && total / info.physSize > guard.maxRatio) {
+    throw new EngineError(ERR.GUARD_LIMIT, `疑似解压炸弹(解压比 ${Math.round(total / info.physSize)}:1 超过上限 ${guard.maxRatio}:1),解压已阻止。`);
+  }
+  const destVolDir = existingAncestor(job.dest);
+  if (!checkFreeSpace(destVolDir, Math.ceil(total * 1.05) + guard.minFreeBytes)) {
+    throw new EngineError(ERR.SPACE_LOW, '目标磁盘剩余空间不足以容纳解压结果,未启动。');
+  }
+}
+
+/* ── 重型任务并发闸:全局信号量,防多任务同时压缩/解压共同耗尽 CPU/内存/磁盘 ── */
+let heavyActive = 0;
+const heavyQueue: Array<() => void> = [];
+
+async function acquireHeavySlot(handle: TaskHandle): Promise<() => void> {
+  while (heavyActive >= guard.maxHeavyTasks && !handle.cancelled) {
+    await new Promise<void>((res) => heavyQueue.push(res));
+  }
+  if (handle.cancelled) {
+    /* 排队期间被取消:让出这次唤醒,避免容量空转导致其他等待者饿死 */
+    Promise.resolve().then(() => heavyQueue.shift()?.());
+    return () => { /* 未占坑,无需释放 */ };
+  }
+  heavyActive++;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    heavyActive--;
+    heavyQueue.shift()?.();
+  };
+}
+
+/** 并发闸实时状态(selftest/诊断用) */
+export function guardStats(): { active: number; waiting: number; maxHeavyTasks: number } {
+  return { active: heavyActive, waiting: heavyQueue.length, maxHeavyTasks: guard.maxHeavyTasks };
+}
+
+/* ── 暂存 → 目标的提交合并 ── */
+
+function uniqueTargetPath(dst: string): string {
+  const ext = path.extname(dst);
+  const stem = dst.slice(0, dst.length - ext.length);
+  for (let i = 1; ; i++) {
+    const cand = `${stem} (${i})${ext}`;
+    if (!fs.existsSync(cand)) return cand;
+  }
+}
+
+/** 把 src 落到 dst:同卷 rename 优先(O(1)),跨卷/被拒退化为复制;目录逐层合并 */
+function moveInto(src: string, dst: string): void {
+  try { fs.renameSync(src, dst); return; } catch { /* EXDEV/瞬时占用 → 复制兜底 */ }
+  const st = fs.lstatSync(src);
+  if (st.isDirectory()) {
+    fs.mkdirSync(dst, { recursive: true });
+    for (const name of fs.readdirSync(src)) moveInto(path.join(src, name), path.join(dst, name));
+    fs.rmdirSync(src);
+  } else {
+    fs.copyFileSync(src, dst);
+    fs.rmSync(src);
+  }
+}
+
+/**
+ * 提交暂存目录到用户目标:dest 不存在 → 整体挪位(瞬间完成,无半成品窗口);
+ * 已存在 → 按覆盖策略逐项合并。ask 的冲突已在 IPC 层预检拦截,走到这里按 overwrite 落。
+ */
+export function commitExtract(staging: string, dest: string, mode: 'overwrite' | 'skip' | 'rename'): void {
+  if (!fs.existsSync(dest)) { moveInto(staging, dest); return; }
+  const queue: Array<[string, string]> = [];
+  for (const name of fs.readdirSync(staging)) queue.push([path.join(staging, name), path.join(dest, name)]);
+  while (queue.length) {
+    const [src, dst] = queue.shift()!;
+    const srcIsDir = fs.lstatSync(src).isDirectory();
+    if (!fs.existsSync(dst)) {
+      moveInto(src, dst); // 整树挪位,其子项已在最终位置,无需再入队
+      continue;
+    }
+    if (srcIsDir && fs.lstatSync(dst).isDirectory()) {
+      for (const name of fs.readdirSync(src)) queue.push([path.join(src, name), path.join(dst, name)]);
+      continue;
+    }
+    if (mode === 'skip') { fs.rmSync(src, { recursive: true, force: true }); continue; }
+    if (mode === 'rename') { moveInto(src, uniqueTargetPath(dst)); continue; }
+    fs.rmSync(dst, { recursive: true, force: true });
+    moveInto(src, dst);
+  }
+  fs.rmSync(staging, { recursive: true, force: true });
+}
+
+/* ------------------------------------------------------------------ */
 /* 压缩                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -505,8 +910,11 @@ function compressArgs(job: CompressJob, output: string): string[] {
     args.push(job.multiThread ? '-mmt=on' : '-mmt=off');
   }
   if (job.password) {
-    /* 密码只能经 argv 传递:7za 21.07 实测 @listfile 仅承载文件名、-p{prompt} 管道下读不到 stdin,
-     * 无安全的旁路通道;缓存/落盘策略由渲染层 rememberPassword 控制(不落盘) */
+    /* 密码只能经 argv 传递——7za 21.07 两轮实测(阶段 3.2/3.3)确证无旁路:
+     * @listfile 把 "-p…" 行当文件名(不支持开关);管道下 stdin 读不到密码交互;
+     * 引擎 stdout 不回显 argv(无 Command Line 头,故 interpretFailure 兜底 detail 安全)。
+     * 泄露面控制:进度广播/快照均已剔除 log 字段,事务 journal 与设置持久化不含密码,
+     * argv 的 OS 级可见性(同机进程查询)属引擎能力边界,应用层无法在不换引擎下消除。 */
     args.push(`-p${job.password}`);
     if (fmt === '7z' && job.encryptHeaders) args.push('-mhe=on');
   }
@@ -517,49 +925,77 @@ function compressArgs(job: CompressJob, output: string): string[] {
 
 /**
  * 创建/追加压缩包;复合格式内部两阶段(先生成 tar 再整体压缩),共用一个 taskId。
+ * 事务化(3.1):追加到既有归档 = 同目录副本上修改、校验通过后 swap 替换;
+ * 新建归档先落同目录 .tztmp 再挪位,失败/cancel 清理半成品,绝不留下冒充成功的残缺输出,
+ * 同时规避跨卷 rename 限制。
  * 返回的 Promise 在引擎就绪且任务启动后 resolve;结果通过 onProgress 事件流反馈。
  */
 export async function runCompress(job: CompressJob, onProgress: ProgressFn): Promise<{ taskId: string }> {
   engineExe(); // 引擎不可用直接抛 EngineError
   const taskId = randomUUID();
+  const uid = taskId.slice(0, 8);
   const handle: TaskHandle = { proc: null, cancelled: false };
   tasks.set(taskId, handle);
   emitStart(taskId, 'compress', onProgress);
   const compound = COMPOUND[job.format];
 
   (async () => {
+    let stagedTmp: string | undefined; // 追加模式:既有归档的同目录副本
+    let stagePath = '';                // 新建模式:输出的同目录暂存位
+    let tar = '';                      // 复合格式中间产物
+    let handedOff = false;             // journal/文件归属已移交 commitTxnSwap,外层不得再清
+    let completed = false;
+    let release: (() => void) | null = null; // 重型任务并发闸(3.2)
     try {
+      release = await acquireHeavySlot(handle);
+      if (handle.cancelled) return finishCancel(taskId, 'compress', onProgress);
+      const outDir = path.dirname(job.output);
+      try { fs.mkdirSync(outDir, { recursive: true }); } catch { /* 目录不可建,由复制/引擎报错 */ }
+      if (!compound && fs.existsSync(job.output)) {
+        stagedTmp = stageForModify(job.output, uid).tmp; // 追加:预检空间 + 复制 + 登记
+      } else {
+        stagePath = path.join(outDir, `${path.basename(job.output)}.${uid}${TXN_TMP_EXT}`);
+        /* 新建没有可备份的对象,先按源体积预估,空间不足直接不启动 */
+        const need = totalSize(job.sources) + 64 * 1024 * 1024;
+        if (!checkFreeSpace(outDir, need)) {
+          throw new EngineError(ERR.SPACE_LOW, '目标磁盘空间不足,压缩未启动。');
+        }
+      }
+      const sink = stagedTmp ?? stagePath;
+
       if (compound) {
-        const uid = taskId.slice(0, 8);
-        const tar = path.join(os.tmpdir(), `tongzip-${uid}.tar`);
-        const tmpOut = path.join(os.tmpdir(), `tongzip-${uid}.tmp`);
+        tar = path.join(os.tmpdir(), `tongzip-${uid}.tar`);
         const r1 = await runStep(handle, taskId, 'compress', compressArgs({ ...job, format: 'tar' }, tar), onProgress);
         if (handle.cancelled) return finishCancel(taskId, 'compress', onProgress);
         if (r1.code > 1) return emitError(taskId, 'compress', onProgress, interpretFailure(r1.code, r1.stdout).message);
-        const r2 = await runStep(handle, taskId, 'compress', ['a', '-y', `-t${compound}`, tmpOut, tar], onProgress);
-        fs.rmSync(tar, { force: true });
-        if (handle.cancelled) { fs.rmSync(tmpOut, { force: true }); return finishCancel(taskId, 'compress', onProgress); }
-        if (r2.code > 1 || !fs.existsSync(tmpOut)) {
-          fs.rmSync(tmpOut, { force: true });
-          return emitError(taskId, 'compress', onProgress, r2.code > 1 ? interpretFailure(r2.code, r2.stdout).message : '压缩未生成输出文件。');
+        const r2 = await runStep(handle, taskId, 'compress', ['a', '-y', `-t${compound}`, stagePath, tar], onProgress);
+        if (handle.cancelled) return finishCancel(taskId, 'compress', onProgress);
+        if (r2.code > 1 || !fs.existsSync(stagePath)) {
+          return emitError(taskId, 'compress', onProgress, r2.code > 1
+            ? interpretFailure(r2.code, r2.stdout).message
+            : '压缩未生成输出文件。');
         }
-        try {
-          fs.mkdirSync(path.dirname(job.output), { recursive: true });
-          fs.rmSync(job.output, { force: true });
-          fs.renameSync(tmpOut, job.output);
-        } catch (e) {
-          return emitError(taskId, 'compress', onProgress, `写入目标失败: ${(e as Error).message}`);
-        }
-        emitDone(taskId, 'compress', onProgress, path.basename(job.output));
+        await verifyArchiveArtifact(stagePath, job.password, TXN_CREATE_TEST_MAX);
       } else {
-        const r = await runStep(handle, taskId, 'compress', compressArgs(job, job.output), onProgress);
+        const r = await runStep(handle, taskId, 'compress', compressArgs(job, sink), onProgress);
         if (handle.cancelled) return finishCancel(taskId, 'compress', onProgress);
         if (r.code > 1) return emitError(taskId, 'compress', onProgress, interpretFailure(r.code, r.stdout).message);
-        emitDone(taskId, 'compress', onProgress, path.basename(job.output));
+        await verifyArchiveArtifact(sink, job.password, stagedTmp ? TXN_MODIFY_TEST_MAX : TXN_CREATE_TEST_MAX);
       }
+      handedOff = true; // 自此文件与 journal 由替换流程(含其失败路径/启动恢复)负责
+      commitTxnSwap(job.output, sink, uid);
+      completed = true;
+      emitDone(taskId, 'compress', onProgress, path.basename(job.output));
     } catch (err) {
-      emitError(taskId, 'compress', onProgress, (err as Error).message);
+      const e = err as EngineError;
+      emitError(taskId, 'compress', onProgress, e.message ?? String(err), e.code);
     } finally {
+      if (!completed && !handedOff) {
+        if (stagedTmp) abortTxn(uid, stagedTmp); // 原归档从未被触碰,副本丢弃
+        if (stagePath) { try { fs.rmSync(stagePath, { force: true }); } catch { /* 残留交启动回收 */ } }
+      }
+      if (tar) { try { fs.rmSync(tar, { force: true }); } catch { /* 中间产物清理失败无碍 */ } }
+      release?.();
       tasks.delete(taskId);
     }
   })();
@@ -577,25 +1013,72 @@ function finishCancel(_id: string, kind: JobKind, fn: ProgressFn) {
 
 export async function runExtract(job: ExtractJob, onProgress: ProgressFn): Promise<{ taskId: string }> {
   engineExe();
+  /* 条目选择器同样过安全检查:渲染层传回的 entry 源自列表,但 IPC 面不可信任 */
+  for (const s of job.entries ?? []) {
+    if (!sanitizeEntryPath(s)) throw new EngineError(ERR.UNSAFE_PATH, `非法条目选择路径:${s}`);
+  }
   const taskId = randomUUID();
+  const uid = taskId.slice(0, 8);
   const handle: TaskHandle = { proc: null, cancelled: false };
   tasks.set(taskId, handle);
   emitStart(taskId, 'extract', onProgress);
 
-  const args = ['x', '-y', '-spd']; // -spd: 条目名字面匹配,防 */?/# 误扩展连带解压其他条目
-  if (job.overwrite === 'overwrite') args.push('-aoa');
-  else if (job.overwrite === 'skip') args.push('-aos');
-  else if (job.overwrite === 'rename') args.push('-aou');
-  if (job.password) args.push(`-p${job.password}`); // 密码仅能走 argv,见 compressArgs 内实测说明
-  /* 7z 把第一个非开关参数当压缩包:archive 必须在 entries 之前 */
-  args.push(job.archive);
-  if (job.entries?.length) args.push(...job.entries);
-  args.push(`-o${job.dest}`);
-
   (async () => {
+    const destRoot = path.resolve(job.dest);
+    /* 暂存目录与 dest 同卷同父:提交挪位是 O(1) rename;「.」前缀 + .tzstage 后缀 = 隐藏且可安全整体删除 */
+    const stageDir = path.join(path.dirname(destRoot), `.${path.basename(destRoot)}.tzstage-${uid}`);
+    let release: (() => void) | null = null;
+    let committed = false;
+    let watchTimer: ReturnType<typeof setInterval> | null = null;
+    let guardAbort = '';
     try {
-      fs.mkdirSync(job.dest, { recursive: true });
+      release = await acquireHeavySlot(handle);
+      if (handle.cancelled) return finishCancel(taskId, 'extract', onProgress);
+
+      /* 预检数据:列表可读才做静态拦截;加密头无密码 → 由错误链路直接拦下 */
+      let info: ArchiveInfo | null = null;
+      try { info = await listArchive(job.archive, job.password); }
+      catch (e) {
+        if (e instanceof EngineError && e.code === ERR.NEED_PASSWORD && !job.password) throw e;
+        info = null; // 其余列表失败不阻断(引擎解压自有错误路径),动态监控仍生效
+      }
+      preflightExtract(job, info);
+
+      fs.mkdirSync(path.dirname(stageDir), { recursive: true });
+      txnUpsert({ id: uid, archive: destRoot, tmp: stageDir, stage: 'staged', kind: 'extract', at: Date.now() });
+
+      const args = ['x', '-y', '-spd']; // -spd: 条目名字面匹配,防 */?/# 误扩展连带解压其他条目
+      /* 覆盖策略(-aoa/-aos/-aou)不再下发:解压目标是空暂存目录,不存在冲突;
+         与 dest 既有文件的取舍改由 commitExtract 按用户模式执行(语义等价且可回退) */
+      if (job.password) args.push(`-p${job.password}`); // 密码仅能走 argv,见 compressArgs 内实测说明
+      args.push(job.archive);
+      if (job.entries?.length) args.push(...job.entries);
+      args.push(`-o${stageDir}`);
+
+      /* 执行中看门狗:声明值可伪造,一切以真实落盘为准;越界 → SIGKILL + 暂存整体丢弃 */
+      const t0 = Date.now();
+      watchTimer = setInterval(() => {
+        if (guardAbort) return;
+        if (Date.now() - t0 > guard.maxRunMs) {
+          guardAbort = `超过解压运行时长上限(${Math.round(guard.maxRunMs / 1000)}s)`;
+        } else {
+          const m = measureTree(stageDir, guard.maxEntries, guard.maxTotalBytes);
+          if (m.links > 0) guardAbort = '检测到符号链接落地';
+          else if (m.files > guard.maxEntries) guardAbort = `实际文件数超过上限(${guard.maxEntries})`;
+          else if (m.bytes > guard.maxTotalBytes) guardAbort = `实际输出体积超过上限(${guard.maxTotalBytes} 字节)`;
+          else {
+            const free = freeBytesAt(path.dirname(destRoot));
+            if (free >= 0 && free < guard.minFreeBytes) guardAbort = '磁盘剩余空间低于安全水位';
+          }
+        }
+        if (guardAbort) handle.proc?.kill('SIGKILL');
+      }, Math.max(50, guard.watchIntervalMs));
+
       const r = await runStep(handle, taskId, 'extract', args, onProgress);
+      if (guardAbort) {
+        return emitError(taskId, 'extract', onProgress,
+          `资源防护熔断:${guardAbort}。已安全中止,原归档未受影响,半成品输出已清理。`, ERR.GUARD_LIMIT);
+      }
       if (handle.cancelled) return finishCancel(taskId, 'extract', onProgress);
       if (r.code > 1) {
         const why = interpretFailure(r.code, r.stdout);
@@ -603,13 +1086,27 @@ export async function runExtract(job: ExtractJob, onProgress: ProgressFn): Promi
           /* 机读码供渲染层弹密码框;文案保持人可读,任务窗口直接展示也不刺眼 */
           return emitError(taskId, 'extract', onProgress, job.password ? '密码不正确。' : '该压缩包已加密,需要密码。', ERR.NEED_PASSWORD);
         }
-        return emitError(taskId, 'extract', onProgress, why.message);
+        return emitError(taskId, 'extract', onProgress, `${why.message}(半成品输出未提交,已清理)`);
       }
-      applyExtractRenames(job);
+      /* 提交前链接复扫:覆盖「列表不可读未做静态预检」的归档,双保险 */
+      const scan = measureTree(stageDir, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+      if (scan.links > 0) {
+        return emitError(taskId, 'extract', onProgress,
+          '解压产物包含符号链接,基于安全策略已放弃本次输出(原归档未受影响)。', ERR.UNSAFE_PATH);
+      }
+      applyExtractRenames(job, stageDir);
+      commitExtract(stageDir, destRoot, job.overwrite === 'skip' ? 'skip' : job.overwrite === 'rename' ? 'rename' : 'overwrite');
+      committed = true; // 自此产物属于用户目标目录,外层不得再清
+      txnRemove(uid);
       emitDone(taskId, 'extract', onProgress, path.basename(job.archive));
     } catch (err) {
-      emitError(taskId, 'extract', onProgress, (err as Error).message);
+      const e = err as EngineError;
+      emitError(taskId, 'extract', onProgress, e.message ?? String(err), e.code);
     } finally {
+      if (watchTimer) clearInterval(watchTimer);
+      if (!committed) { try { fs.rmSync(stageDir, { recursive: true, force: true }); } catch { /* 残留交启动回收 */ } }
+      txnRemove(uid);
+      release?.();
       tasks.delete(taskId);
     }
   })();
@@ -617,18 +1114,17 @@ export async function runExtract(job: ExtractJob, onProgress: ProgressFn): Promi
   return { taskId };
 }
 
-/** 解压完成后按用户指定的新名重命名落地条目;单条失败不影响整体结果 */
-function applyExtractRenames(job: ExtractJob): void {
+/** 解压完成后按用户指定的新名重命名落地条目(在暂存目录内执行);单条失败不影响整体结果 */
+function applyExtractRenames(job: ExtractJob, root: string): void {
   if (!job.renames) return;
-  const root = path.resolve(job.dest);
   for (const [entry, newName] of Object.entries(job.renames)) {
     try {
       /* 剪除 . / .. 段:恶意条目名(../../x)不得借重命名逃出目标目录(zip-slip 防线) */
-      const parts = entry.split('/').filter((s) => s && s !== '.' && s !== '..');
+      const parts = sanitizeEntryPath(entry);
       const clean = newName.replace(/[\\/:*?"<>|]/g, '').trim();
-      if (!parts.length || !clean || /^\.+$/.test(clean) || clean === parts[parts.length - 1]) continue;
+      if (!parts?.length || !clean || /^\.+$/.test(clean) || clean === parts[parts.length - 1]) continue;
       const src = path.resolve(root, ...parts);
-      if (!src.startsWith(root + path.sep)) continue; // 最终校验:解析后仍在 dest 内
+      if (src !== root && !src.startsWith(root + path.sep)) continue; // 最终校验:解析后仍在解压根内
       const dst = path.resolve(path.dirname(src), clean);
       if (!dst.startsWith(root + path.sep)) continue;
       if (src !== dst && fs.existsSync(src) && !fs.existsSync(dst)) fs.renameSync(src, dst);
@@ -659,6 +1155,10 @@ export async function extractConflicts(job: ExtractJob): Promise<string[]> {
 
 /** 提取单个文件到临时目录并返回其绝对路径(双击预览用) */
 export async function extractSingleToTemp(archive: string, entry: string, password?: string): Promise<string> {
+  /* 恶意条目名(../x、C:/x)绝不能逃出临时根:previewEntry 会按返回路径的父目录做
+     递归清理,一旦逃逸等价于「预览顺手删用户目录」(阶段 3.2 修复的 P0 缺陷) */
+  const parts = sanitizeEntryPath(entry);
+  if (!parts) throw new EngineError(ERR.UNSAFE_PATH, '非法条目路径。');
   const dest = path.join(os.tmpdir(), 'TongZip', randomUUID().slice(0, 8));
   fs.mkdirSync(dest, { recursive: true });
   const args = ['x', '-y', '-spd'];
@@ -669,26 +1169,37 @@ export async function extractSingleToTemp(archive: string, entry: string, passwo
   } catch (err) {
     const e = err as { stdout?: string; message?: string };
     const why = interpretFailure(2, (e.stdout ?? '') + (e.message ?? ''));
+    try { fs.rmSync(dest, { recursive: true, force: true }); } catch { /* 尽力清理 */ }
     if (why.needsPassword) throw new EngineError(ERR.NEED_PASSWORD, '该文件需要密码。');
     throw new Error(why.message);
   }
-  const direct = path.join(dest, entry.replace(/\//g, path.sep));
-  if (fs.existsSync(direct)) return direct;
-  /* 兜底遍历:收集全部落地文件,优先同名匹配(7z 对异常条目名可能改写入位置),
-     避免盲取第一个文件导致「双击打开 a.txt 实际打开 b.txt」的错拿 */
-  const want = path.basename(entry).toLowerCase();
-  const found: string[] = [];
-  const walk = (d: string) => {
-    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
-      const fp = path.join(d, f.name);
-      if (f.isDirectory()) walk(fp); else found.push(fp);
-    }
-  };
-  walk(dest);
-  const hit = found.find((f) => f.toLowerCase() === direct.toLowerCase())
-    ?? found.find((f) => path.basename(f).toLowerCase() === want)
-    ?? found[0];
+  const direct = path.join(dest, ...parts);
+  let hit: string | null = fs.existsSync(direct) ? direct : null;
+  if (!hit) {
+    /* 兜底遍历:收集全部落地文件,优先同名匹配(7z 对异常条目名可能改写入位置),
+       避免盲取第一个文件导致「双击打开 a.txt 实际打开 b.txt」的错拿 */
+    const want = path.basename(entry).toLowerCase();
+    const found: string[] = [];
+    const walk = (d: string) => {
+      for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+        const fp = path.join(d, f.name);
+        if (f.isSymbolicLink()) continue; // 链接产物不参与单文件提取
+        if (f.isDirectory()) walk(fp); else found.push(fp);
+      }
+    };
+    walk(dest);
+    hit = found.find((f) => f.toLowerCase() === direct.toLowerCase())
+      ?? found.find((f) => path.basename(f).toLowerCase() === want)
+      ?? found[0] ?? null;
+  }
   if (!hit) throw new Error('提取失败:未找到目标文件。');
+  /* 返回值必须仍在本次临时根内:越界即丢弃(宁可失败,不可把目录外路径交给调用方) */
+  const resolved = path.resolve(hit);
+  const root = path.resolve(dest);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    try { fs.rmSync(dest, { recursive: true, force: true }); } catch { /* 尽力清理 */ }
+    throw new EngineError(ERR.UNSAFE_PATH, '条目落地位置越界,已阻止打开。');
+  }
   return hit;
 }
 
@@ -702,6 +1213,8 @@ const TEXT_EXT = new Set(['txt', 'md', 'log', 'csv', 'json', 'xml', 'yml', 'yaml
 const IMAGE_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', avif: 'image/avif' };
 const PREVIEW_TEXT_MAX = 64 * 1024;
 const PREVIEW_IMAGE_MAX = 8 * 1024 * 1024;
+/** 文本嗅探整体读入上限:扩展名是 .log 的 10GB 文件绝不能整读进内存(3.2 资源防护) */
+const PREVIEW_READ_CAP = 16 * 1024 * 1024;
 
 /** 解压单个条目并归类为文本/图片预览(其余只返回元信息) */
 export async function previewEntry(archive: string, entry: string, password?: string): Promise<EntryPreview> {
@@ -716,7 +1229,10 @@ export async function previewEntry(archive: string, entry: string, password?: st
       return { kind: 'image', name, size, dataUrl: `data:${IMAGE_MIME[ext]};base64,${b64}` };
     }
     if (TEXT_EXT.has(ext) || size < 4096) {
-      const buf = fs.readFileSync(local);
+      /* 只读防护上限内的前缀:嗅探 0 字节 + 截断文本,巨型文件不进内存 */
+      const buf = Buffer.alloc(Math.min(size, PREVIEW_READ_CAP));
+      const fd = fs.openSync(local, 'r');
+      try { fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
       if (!buf.subarray(0, Math.min(buf.length, 1024)).includes(0)) {
         const text = buf.subarray(0, PREVIEW_TEXT_MAX).toString('utf8');
         return { kind: 'text', name, size, text, truncated: size > PREVIEW_TEXT_MAX };
@@ -759,7 +1275,10 @@ export async function runTest(archive: string, password: string | undefined, onP
   if (password) args.push(`-p${password}`); // 密码仅能走 argv,见 compressArgs 内实测说明
   args.push(archive);
   (async () => {
+    let release: (() => void) | null = null;
     try {
+      release = await acquireHeavySlot(handle); // 完整性测试同样吃 CPU/磁盘,纳入重型并发闸(3.2)
+      if (handle.cancelled) return finishCancel(taskId, 'test', onProgress);
       const r = await runStep(handle, taskId, 'test', args, onProgress);
       if (handle.cancelled) return finishCancel(taskId, 'test', onProgress);
       if (r.code > 1) {
@@ -769,26 +1288,47 @@ export async function runTest(archive: string, password: string | undefined, onP
       emitDone(taskId, 'test', onProgress, '压缩包完好。');
     } catch (err) {
       emitError(taskId, 'test', onProgress, (err as Error).message);
-    } finally { tasks.delete(taskId); }
+    } finally { release?.(); tasks.delete(taskId); }
   })();
   return { taskId };
 }
 
-export async function runDelete(archive: string, entries: string[], onProgress: ProgressFn): Promise<{ taskId: string }> {
+/**
+ * 删除条目(事务化 3.1):一律在同目录副本上执行 7za d,校验通过后才替换原归档;
+ * 引擎报错/校验失败/取消/崩溃都不碰原件。password 供加密头归档使用。
+ */
+export async function runDelete(archive: string, entries: string[], onProgress: ProgressFn, password?: string): Promise<{ taskId: string }> {
   engineExe();
   const taskId = randomUUID();
+  const uid = taskId.slice(0, 8);
   const handle: TaskHandle = { proc: null, cancelled: false };
   tasks.set(taskId, handle);
   emitStart(taskId, 'delete', onProgress);
   (async () => {
+    let tmp: string | undefined;
+    let handedOff = false;
     try {
-      const r = await runStep(handle, taskId, 'delete', ['d', '-y', '-spd', archive, ...entries], onProgress);
+      tmp = stageForModify(archive, uid).tmp;
+      const args = ['d', '-y', '-spd'];
+      if (password) args.push(`-p${password}`);
+      args.push(tmp, ...entries);
+      const r = await runStep(handle, taskId, 'delete', args, onProgress);
       if (handle.cancelled) return finishCancel(taskId, 'delete', onProgress);
-      if (r.code > 1) return emitError(taskId, 'delete', onProgress, interpretFailure(r.code, r.stdout).message);
+      if (r.code > 1) {
+        const why = interpretFailure(r.code, r.stdout);
+        return emitError(taskId, 'delete', onProgress, `${why.message}原压缩包未做任何修改。`, why.needsPassword ? ERR.NEED_PASSWORD : undefined);
+      }
+      await verifyArchiveArtifact(tmp, password);
+      handedOff = true; // 文件/journal 归属移交替换流程
+      commitTxnSwap(archive, tmp, uid);
       emitDone(taskId, 'delete', onProgress, '');
     } catch (err) {
-      emitError(taskId, 'delete', onProgress, (err as Error).message);
-    } finally { tasks.delete(taskId); }
+      const e = err as EngineError;
+      emitError(taskId, 'delete', onProgress, e.message ?? String(err), e.code);
+    } finally {
+      if (!handedOff && tmp) abortTxn(uid, tmp);
+      tasks.delete(taskId);
+    }
   })();
   return { taskId };
 }

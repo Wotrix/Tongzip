@@ -15,10 +15,13 @@ import type {
 } from '../shared/types';
 import { ERR, isArchiveExt } from '../shared/types';
 import {
-  EngineError, cancelTask, defaultOutputFor, detectEngine, extractConflicts, extractSingleToTemp, inferFormat,
-  isArchivePath, listArchive, pauseTask, previewEntry, quickExtractDest, runCompress, runDelete,
-  runExtract, runTest, totalSize,
+  EngineError, cancelTask, configureGuard, configureTxnJournal, defaultOutputFor, detectEngine, extractConflicts, extractSingleToTemp,
+  inferFormat, isArchivePath, listArchive, pauseTask, previewEntry, quickExtractDest, recoverStaleTransactions,
+  runCompress, runDelete, runExtract, runTest, totalSize,
 } from './engine';
+import {
+  backfillTaskPaths, clearTaskHistory, configureTaskHistory, flushTaskHistory, getTaskHistory, loadTaskHistory, observeTaskEvent,
+} from './history';
 import { installShell, registerDefaultAppCapabilities, shellStatus, uninstallShell } from './shell';
 
 /* ------------------------------------------------------------------ */
@@ -65,6 +68,7 @@ const DEFAULTS: Settings = {
   browseTreeRail: false,
   listColumnWidths: {},
   hiddenColumns: [],
+  guard: {}, // 缺省=引擎侧 DEFAULT_GUARD 安全默认值;用户覆盖只存差量
 };
 /** 设置存储:内存缓存 + 去抖落盘。此前 raw 每键重读文件、settings-set 逐键同步写,
  * 一次 patch 多个键会反复读写的磁盘;改为首次加载后常驻内存,变更后 150ms 合写一次 */
@@ -239,10 +243,16 @@ function pushFeed(): void {
 }
 
 function send(ev: ProgressEvent): void {
-  /* 快照维护:任务窗口打开瞬间靠它回放已在跑的任务;终态 6s 后清理 */
-  taskFeed.set(ev.taskId, ev);
+  /* 快照维护:任务窗口打开瞬间靠它回放已在跑的任务;终态 6s 后清理
+   * taskFeed/feedPending 一律存剔除 log 的副本:log 是引擎原始输出行,属跨进程边界
+   * 不该传递的中间数据(密码不回显是实测事实,不是依赖) */
+  const stripped: ProgressEvent = ev.log === undefined ? ev : { ...ev, log: undefined };
+  /* 任务历史持久化(3.4):从事件流定格记录——只取 kind/status/percent/code 与路径登记表,
+   * message/log 永不入库;路径晚到由 tz:task-path-set 在终态时补最新 */
+  observeTaskEvent(stripped, taskPaths.get(ev.taskId));
+  taskFeed.set(ev.taskId, stripped);
   if (ev.status !== 'running') setTimeout(() => taskFeed.delete(ev.taskId), 6000);
-  feedPending.set(ev.taskId, ev);
+  feedPending.set(ev.taskId, stripped);
   if (ev.status !== 'running') {
     /* 终态:先清定时器并把合帧中的最新状态一并发出,不等下一拍 */
     if (feedTimer) { clearTimeout(feedTimer); feedTimer = null; }
@@ -438,7 +448,8 @@ function installIpc(): void {
     return runExtract(job, wrapSend);
   }));
   ipcMain.handle('tz:test', wrap((a: { archive: string; password?: string }) => runTest(a.archive, a.password, send)));
-  ipcMain.handle('tz:delete-entries', wrap((a: { archive: string; entries: string[] }) => runDelete(a.archive, a.entries, send)));
+  ipcMain.handle('tz:delete-entries', wrap((a: { archive: string; entries: string[]; password?: string }) =>
+    runDelete(a.archive, a.entries, send, a.password)));
   /* 重命名磁盘上的压缩包文件:保留原扩展名,校验合法名与目标冲突,成功后返回新路径 */
   ipcMain.handle('tz:archive-rename', wrap(({ archive, newName }: { archive: string; newName: string }) => {
     const name = newName.trim();
@@ -524,6 +535,8 @@ function installIpc(): void {
       if (!w.isDestroyed()) w.webContents.send('tz:theme-changed', nativeTheme.shouldUseDarkColors);
     }
     if (patch.enginePath) void detectEngine(patch.enginePath).catch(() => undefined);
+    /* 防护上限改的是引擎行为,须即时重灌(存储只留差量,回落逻辑在 configureGuard 内) */
+    if ('guard' in patch) configureGuard(store.raw.guard);
     return store.raw;
   });
 
@@ -570,7 +583,16 @@ function installIpc(): void {
   ipcMain.handle('tz:task-window-open', () => { openTaskWindow(); return true; });
   ipcMain.handle('tz:task-snapshot', () => [...taskFeed.values()]);
   ipcMain.handle('tz:task-paths', () => Object.fromEntries(taskPaths));
-  ipcMain.handle('tz:task-path-set', (_e, taskId: string, p: TaskPaths) => { taskPaths.set(taskId, p); return true; });
+  ipcMain.handle('tz:task-path-set', (_e, taskId: string, p: TaskPaths) => {
+    taskPaths.set(taskId, p);
+    /* 快任务终态可能先于登记到达:回填历史记录的 src/out/label */
+    backfillTaskPaths(taskId, p);
+    return true;
+  });
+
+  /* 任务历史(3.4):跨会话查看;清空同步落盘。返回主进程恢复状态机处理后的记录 */
+  ipcMain.handle('tz:history-get', () => getTaskHistory());
+  ipcMain.handle('tz:history-clear', () => { clearTaskHistory(); return true; });
 
   /* 文件夹浏览:目录读取 / 默认程序打开 / 移入回收站 / 新开浏览窗口 */
   ipcMain.handle('tz:dir-list', wrap((dir: string): FolderEntry[] => {
@@ -651,10 +673,25 @@ if (!app.requestSingleInstanceLock()) {
     /* Windows 任务栏按 AppUserModelID 决定图标/分组:不设则回落 electron.exe 默认标(黑环绿点),
      * 我们的窗口 icon.png 再大也不显示。给一个稳定 ID 后,任务栏按钮才用 TongZip 图标。 */
     if (isWin) app.setAppUserModelId('com.tongzip.app');
+    /* 归档修改事务(3.1):journal 落 userData;先还原上次崩溃遗留的半替换,再开窗 */
+    configureTxnJournal(path.join(app.getPath('userData'), 'tongzip-txn.json'));
+    /* 解压资源防护(3.2):设置中的上限覆盖灌入引擎;缺省回落 DEFAULT_GUARD */
+    configureGuard(store.raw.guard);
+    const txnRecovery = recoverStaleTransactions();
+    /* 任务历史(3.4):必须晚于事务恢复——提交阶段崩溃的任务结果由 journal 判定,
+     * 历史侧只把 running 映射为 interrupted 并按 restored 清单标记 txnRolledBack */
+    configureTaskHistory(path.join(app.getPath('userData'), 'tongzip-history.json'));
+    loadTaskHistory(new Set(txnRecovery.restored));
     const theme = store.get('theme') as Settings['theme'];
     nativeTheme.themeSource = theme === 'auto' ? 'system' : theme;
     installIpc();
     win = createWindow();
+    if (txnRecovery.restored.length || txnRecovery.cleaned.length) {
+      /* 页面加载完成前 send 会丢(同启动载荷教训),挂 did-finish-load 一次性广播 */
+      win.webContents.once('did-finish-load', () => {
+        if (win && !win.isDestroyed()) win.webContents.send('tz:txn-recovered', txnRecovery);
+      });
+    }
     // 主窗关闭即退出(否则任务窗口残留会让 app 不退)
     win.on('closed', () => { win = null; app.quit(); });
     deliverPayload(parseArgv(process.argv));
@@ -672,6 +709,6 @@ if (!app.requestSingleInstanceLock()) {
     if (!isWin || process.platform !== 'darwin') app.quit();
   });
 
-  /* 退出去掉去抖窗口期,确保最后一笔设置落盘 */
-  app.on('will-quit', () => flushSettings());
+  /* 退出去掉去抖窗口期,确保最后一笔设置与任务历史落盘 */
+  app.on('will-quit', () => { flushSettings(); flushTaskHistory(); });
 }

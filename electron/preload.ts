@@ -4,7 +4,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   AppAbout, ArchiveFile, ArchiveInfo, CompressJob, EngineInfo, EntryPreview, ExtractJob, ExtractStart, FolderEntry,
-  IpcResult, LaunchPayload, ProgressEvent, ScanProgress, Settings, ShellState, UpdateCheck,
+  IpcResult, LaunchPayload, PersistedTask, ProgressEvent, ScanProgress, Settings, ShellState, TxnRecoveryInfo, UpdateCheck,
 } from '../shared/types';
 
 type Unsub = () => void;
@@ -23,8 +23,8 @@ const api = {
     ipcRenderer.invoke('tz:extract', job),
   test: (archive: string, password?: string): Promise<IpcResult<{ taskId: string }>> =>
     ipcRenderer.invoke('tz:test', { archive, password }),
-  deleteEntries: (archive: string, entries: string[]): Promise<IpcResult<{ taskId: string }>> =>
-    ipcRenderer.invoke('tz:delete-entries', { archive, entries }),
+  deleteEntries: (archive: string, entries: string[], password?: string): Promise<IpcResult<{ taskId: string }>> =>
+    ipcRenderer.invoke('tz:delete-entries', { archive, entries, password }),
   renameArchive: (archive: string, newName: string): Promise<IpcResult<{ newPath: string }>> =>
     ipcRenderer.invoke('tz:archive-rename', { archive, newName }),
   cancelTask: (taskId: string): Promise<IpcResult<boolean>> =>
@@ -81,6 +81,10 @@ const api = {
   taskPathSet: (taskId: string, p: { archive?: string; output?: string; dest?: string }): Promise<boolean> =>
     ipcRenderer.invoke('tz:task-path-set', taskId, p),
 
+  /* 任务历史(3.4):主进程持久化+恢复状态机后的记录;清空同步落盘 */
+  historyGet: (): Promise<PersistedTask[]> => ipcRenderer.invoke('tz:history-get'),
+  historyClear: (): Promise<boolean> => ipcRenderer.invoke('tz:history-clear'),
+
   /* 文件夹浏览 */
   listDir: (dir: string): Promise<IpcResult<FolderEntry[]>> => ipcRenderer.invoke('tz:dir-list', dir),
   /** 用系统默认程序打开文件/文件夹(区别于 openExternal 只处理 URL) */
@@ -110,6 +114,13 @@ const api = {
     const h = (_e: unknown, p: ScanProgress) => fn(p);
     ipcRenderer.on('tz:scan-progress', h);
     return () => ipcRenderer.off('tz:scan-progress', h);
+  },
+
+  /* 归档修改事务启动恢复通知(阶段 3.1):崩溃遗留的还原/清理结果 */
+  onTxnRecovery: (fn: (info: TxnRecoveryInfo) => void): Unsub => {
+    const h = (_e: unknown, info: TxnRecoveryInfo) => fn(info);
+    ipcRenderer.on('tz:txn-recovered', h);
+    return () => ipcRenderer.off('tz:txn-recovered', h);
   },
 
   /* 拖拽文件 → 绝对路径 */

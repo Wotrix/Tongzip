@@ -128,11 +128,15 @@ export interface DoneJob {
   label: string;
   /** 压缩包完整路径,同 TrackedJob.path */
   path?: string;
-  status: 'done' | 'error' | 'cancelled';
+  /** interrupted=上次会话运行中被中断(3.4 恢复状态机标记,绝不按成功/失败猜);
+   *  retryable=上次排队任务重启且源文件校验通过,等待手动重发 */
+  status: 'done' | 'error' | 'cancelled' | 'interrupted' | 'retryable';
   message?: string;
   /** 机读错误码,同 TrackedJob.code */
   code?: string;
   at: number;
+  /** 3.4:中断任务的归档曾被事务 journal 回滚(结果由事务判定,非引擎完成) */
+  txnRolledBack?: boolean;
 }
 
 interface TaskHubValue {
@@ -182,6 +186,21 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
   finalizeRef.current = finalize;
 
   useEffect(() => {
+    /* 跨会话历史 hydrate(3.4):主进程已完成恢复状态机映射(running→interrupted 等),
+     * 渲染层只展示不判定;同 taskId 以本会话事件为准,持久化记录补缺 */
+    void window.tz.historyGet?.().then((list) => {
+      if (!list?.length) return;
+      setHistory((prev) => {
+        const restored: DoneJob[] = list.map((t) => ({
+          taskId: t.id, kind: t.kind,
+          label: t.label || (t.src || t.out || '').replace(/^.*[\\/]/, ''),
+          path: t.src, status: t.status === 'retryable' || t.status === 'interrupted' ? t.status
+            : t.status === 'done' ? 'done' as const : 'error' as const,
+          code: t.errCode, at: t.finishedAt ?? t.createdAt, txnRolledBack: t.txnRolledBack,
+        })).filter((h) => !prev.some((p) => p.taskId === h.taskId));
+        return [...prev, ...restored].sort((a, b) => b.at - a.at).slice(0, 14);
+      });
+    });
     const off = window.tz.onProgress((ev) => {
       if (ev.status === 'running') {
         setJobs((prev) => {
@@ -228,7 +247,11 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
     if (d) { deferred.current.delete(taskId); finalizeRef.current(d); }
   }, []);
 
-  const clearHistory = useCallback(() => setHistory([]), []);
+  /* 清空渲染层历史同时清主进程持久化历史(3.4),否则重启后旧记录复活 */
+  const clearHistory = useCallback(() => {
+    setHistory([]);
+    void window.tz.historyClear?.();
+  }, []);
 
   return (
     <TaskHubCtx.Provider value={{ jobs, history, track, clearHistory }}>

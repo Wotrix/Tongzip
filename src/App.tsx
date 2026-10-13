@@ -201,6 +201,15 @@ function Shell() {
     })();
   }, []);
 
+  /* ---------- 归档事务启动恢复(阶段 3.1):崩溃遗留的还原/清理对用户透明可感知 ---------- */
+  useEffect(() => window.tz.onTxnRecovery((info) => {
+    if (info.restored.length) {
+      toast(`检测到上次异常退出,已还原 ${info.restored.length} 个压缩包(${info.restored.map((p) => p.split(/[\\/]/).pop()).join('、')})。`);
+    } else if (info.cleaned.length) {
+      toast(`已清理 ${info.cleaned.length} 个上次异常退出遗留的临时文件。`);
+    }
+  }), [toast]);
+
   /* ---------- 打开压缩包:已开则切换,否则新标签(含密码重试) ---------- */
   const createTab = useCallback((archive: string, info: ArchiveInfo) => {
     const id = `tab-${++tabSeq.current}`;
@@ -213,6 +222,8 @@ function Shell() {
     const idx = tabs.findIndex((t) => t.id === id);
     const next = tabs.filter((t) => t.id !== id);
     setTabs(next);
+    /* 关标签即撤密:该包缓存密码随视图销毁失效(rememberPassword 开启也只服务打开中的包) */
+    if (idx >= 0) pwCache.current.delete(tabs[idx].archive);
     if (!next.length) { setActiveId(null); setView('home'); }
     else if (id === activeId) setActiveId(next[Math.min(idx, next.length - 1)].id);
   }, [tabs, activeId]);
@@ -667,7 +678,8 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
         title: '从压缩包中删除',
         body: `确认删除选中的 ${entries.length} 项?此操作不可撤销。`,
         onOk: async () => {
-          const r = await window.tz.deleteEntries(archive, entries);
+          /* 密码随删除事务透传:加密头包结构操作需要;副本修改+校验失败均不触碰原包 */
+          const r = await window.tz.deleteEntries(archive, entries, host.lastPassword(archive));
           if (!r.ok) { toast(r.message, 'err'); return; }
           hub.track(r.data.taskId, 'delete', async (j) => {
             if (j.status === 'done') { toast('已删除。'); await reload(); }

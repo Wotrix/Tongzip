@@ -10,7 +10,10 @@
     "typecheck": "tsc -p tsconfig.electron.json && tsc -p tsconfig.json",
     "build": "vite build",
     "start": "electron dist-electron/main.js",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "npm run build && electron-builder --win",
+    "selftest": "esbuild scripts/selftest.ts --bundle --platform=node --target=node20 --outfile=.tmp/selftest.cjs --log-level=error && node .tmp/selftest.cjs",
+    "crash": "esbuild scripts/crash-test.ts --bundle --platform=node --target=node20 --outfile=.tmp/crash-test.cjs --log-level=error && node .tmp/crash-test.cjs",
+    "gate": "esbuild scripts/gate.ts --bundle --platform=node --target=node20 --outfile=.tmp/gate.cjs --log-level=error && node .tmp/gate.cjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -59,7 +62,8 @@
     ],
     "extraResources": [
       { "from": "engine", "to": "engine" },
-      { "from": "build/archive.ico", "to": "archive.ico" }
+      { "from": "build/archive.ico", "to": "archive.ico" },
+      { "from": "licenses", "to": "licenses" }
     ],
     "win": {
       "target": [
@@ -71,7 +75,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "TongZip"
+      "shortcutName": "TongZip",
+      "license": "licenses/LICENSE-7-Zip.txt"
     }
   }
 }

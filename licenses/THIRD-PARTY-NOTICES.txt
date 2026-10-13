@@ -1,0 +1,48 @@
+TongZip 第三方组件声明 / THIRD-PARTY NOTICES
+============================================
+本文件随应用分发(installer/resources/licenses)。TongZip 本身为免费闭源
+应用;下列第三方组件按其各自许可证提供,二进制分发依各自要求附上许可信息。
+
+一、随应用分发的二进制
+----------------------
+1. 7-Zip 命令行引擎 — engine/7za.exe
+   版本   : 7-Zip 21.07 x64 standalone(以运行时引擎自检输出为准)
+   来源   : 7-Zip 官方网站 https://7-zip.org/(由开发者手工取得随包分发,
+            未做修改;如升级引擎请同步核对本声明与 LICENSE-7-Zip.txt)
+   许可证 : GNU LGPL v2.1(主体);部分代码附 unRAR license restriction、
+            BSD 3-clause / BSD 2-clause 条款 — 全文见同目录 LICENSE-7-Zip.txt
+   合规   : TongZip 以独立子进程命令行方式调用未修改的 7za.exe,不与其代码
+            链接;依 LGPL 与 7-Zip license 要求在分发中包含其二进制与许可文本。
+   能力边界: 7za standalone 不含 RAR 解码与 ZSTD 编解码。因此 .rar/.zst/.iso
+            等格式仅在用户系统安装了完整版 7-Zip 时可打开(应用内
+            ARCHIVE_EXTS_SYS_ONLY 清单为单一数据源);本应用不内置、亦不声称
+            任何 RAR 创建能力(unRAR  restriction:不得用于开发 RAR 兼容压缩器)。
+
+2. Electron 运行时(含 Chromium、Node.js、V8 等捆绑组件)
+   版本   : 与 package.json devDependencies.electron 对应(构建时锁定)
+   许可证 : MIT;其捆绑组件各自的许可证全文见 Electron 安装目录
+            resources/LICENSE 及 LICENSES.chromium.html(由 electron-builder
+            自动随构建产物附带)。
+
+二、随应用分发的开源库(经打包工具编译进渲染层产物)
+----------------------------------------------------
+以下运行时依赖均按各自 package.json 登记的许可证提供(MIT/ISC),其代码被
+Vite/esbuild 编译进 dist 静态资源,不单独附带 node_modules:
+  @radix-ui/*(radix-ui 聚合包)  MIT      class-variance-authority  MIT
+  cn                            MIT      clsx                      MIT
+  lucide-react                  ISC      sonner                    MIT
+  tailwind-merge                MIT      tailwindcss / @tailwindcss/*  MIT
+  react / react-dom             MIT (Meta and contributors)
+(许可证与版本以构建时 lock 文件解析结果复核;升级依赖时同步更新本清单)
+
+三、不随应用分发的开发工具链
+----------------------------
+typescript、vite、vite-plugin-electron、electron-builder、esbuild 等仅用于
+构建,不出现在分发产物中。其许可证在各自仓库可查(主要为 MIT)。
+
+四、安全审计摘要(阶段 3.3,2026-10)
+------------------------------------
+npm audit(官方 advisory 源):运行时依赖链 0 漏洞(source-map-js 已更新至
+1.2.2 修复 GHSA-68fv-2mgg-jv7q)。其余已知告警全部位于开发工具链
+(electron-builder→tar、electron→@electron/get 等传递依赖,构建期使用、
+不进产物),对应修复需 major 升级,列为后续维护事项而非即刻处置。

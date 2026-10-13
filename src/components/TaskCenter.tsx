@@ -152,7 +152,11 @@ export function RunningCard({ job }: { job: TrackedJob }) {
 
 export function HistoryRow({ h, onOpen }: { h: DoneJob; onOpen?: (path: string) => void }) {
   const meta = KIND_LABEL[h.kind];
-  const Icon = h.status === 'done' ? IconCheckCircle : IconWarn;
+  /* 3.4 恢复态:中断/可重试不并入失败红——中断结果未知(不假定成败),可重试等待手动重发 */
+  const interrupted = h.status === 'interrupted';
+  const retryable = h.status === 'retryable';
+  const failed = h.status === 'error' || h.status === 'cancelled';
+  const Icon = h.status === 'done' ? IconCheckCircle : interrupted || retryable ? IconClock : IconWarn;
   const toast = useToast();
   const { menu, bind } = useTaskMenu(h.path);
   /* 点击行:先验存在性再在标签中打开压缩包(删除类任务的目标已消失,自然降级为 toast) */
@@ -167,11 +171,15 @@ export function HistoryRow({ h, onOpen }: { h: DoneJob; onOpen?: (path: string) 
       'group flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',
       'transition-colors hover:bg-accent active:bg-[var(--bg-active)] [&_svg]:size-[15px] [&_svg]:shrink-0',
       openable && 'cursor-pointer',
-      h.status !== 'done' && 'text-destructive',
-    )} onClick={openIt} {...bind}>
+      failed && 'text-destructive',
+      interrupted && 'text-[color:var(--warn)]',
+    )} onClick={openIt} {...bind}
+      title={interrupted && h.txnRolledBack ? '上次运行中断;该归档已由事务 journal 回滚到任务前状态' : undefined}>
       {menu}
-      <Icon className={h.status === 'done' ? 'text-primary' : 'text-destructive'} />
-      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{h.label ? `${meta.done} · ${h.label}` : meta.done}</span>
+      <Icon className={h.status === 'done' ? 'text-primary' : failed ? 'text-destructive' : undefined} />
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        {interrupted ? '上次运行中断' : retryable ? `可重试 · ${meta.done}` : h.label ? `${meta.done} · ${h.label}` : meta.done}
+      </span>
       <span className="shrink-0 text-[11.5px] text-muted-foreground group-hover:invisible">{fmtAgo(h.at)}</span>
       {/* 悬停 reveal:行右缘浮现「打开文件位置」图标钮(时间戳隐身让位),内嵌钮悬停面用深一档 --bg-active */}
       {h.path && (

@@ -47,6 +47,10 @@ export interface ArchiveEntry {
   mtime: string;
   /** 是否加密 */
   encrypted: boolean;
+  /** 符号链接/硬链接条目(7za -slt 的 Mode 'l' 前缀或 Symbolic/Hard Link 字段非空) */
+  isLink?: boolean;
+  /** 链接条目的目标路径原文(仅 isLink 时给出,可能指向归档外) */
+  linkTo?: string;
 }
 
 /** 打开压缩包的返回 */
@@ -110,10 +114,52 @@ export interface ExtractJob {
   renames?: Record<string, string>;
   /** 仅解压匹配 entry 的文件并返回其本地路径(用于单文件打开) */
   extractToTemp?: boolean;
+  /** 嵌套解压深度(0=用户直接发起;资源防护按 maxNestDepth 熔断,预留给后续智能解压) */
+  nestDepth?: number;
 }
 
 /** 解压启动结果:taskId=任务已启动;conflicts=ask 预检发现的已存在目标文件清单(上限 50 项) */
 export type ExtractStart = { taskId?: string; conflicts?: string[] };
+
+/* ------------------------------------------------------------------ */
+/* 解压资源防护上限(阶段 3.2)— 安全默认值 + settings.guard 可配置       */
+/* 设计:声明值可伪造,预检只是第一道;执行中看门狗以真实落盘量为准      */
+/* ------------------------------------------------------------------ */
+export interface GuardLimits {
+  /** 单任务条目数上限(预检按列表声明、执行中按真实落地计数) */
+  maxEntries: number;
+  /** 声明总解压体积上限(预检),同时是执行中真实输出量硬顶 */
+  maxTotalBytes: number;
+  /** 单文件声明体积上限 */
+  maxFileBytes: number;
+  /** 解压比上限(声明总体积/归档物理大小);仅当声明总体积超过 ratioMinDeclared 时生效,避免误伤正常高压缩比小文件 */
+  maxRatio: number;
+  /** 压缩比规则的最小声明体积门槛 */
+  ratioMinDeclared: number;
+  /** 解压运行时长上限(毫秒) */
+  maxRunMs: number;
+  /** 输出卷最低剩余空间(预检与执行中监控共用) */
+  minFreeBytes: number;
+  /** 嵌套解压最大深度(预留给智能解压;超限熔断) */
+  maxNestDepth: number;
+  /** 重型任务(压缩/解压/测试)全局并发上限,防多任务共同耗尽 CPU/内存/磁盘 */
+  maxHeavyTasks: number;
+  /** 看门狗采样周期(毫秒) */
+  watchIntervalMs: number;
+}
+
+export const DEFAULT_GUARD: GuardLimits = {
+  maxEntries: 100_000,
+  maxTotalBytes: 64 * 1024 ** 3,
+  maxFileBytes: 32 * 1024 ** 3,
+  maxRatio: 1000,
+  ratioMinDeclared: 1 * 1024 ** 3,
+  maxRunMs: 30 * 60_000,
+  minFreeBytes: 64 * 1024 * 1024,
+  maxNestDepth: 2,
+  maxHeavyTasks: 2,
+  watchIntervalMs: 1000,
+};
 
 /** 错误码单一数据源:主进程 EngineError.code / 进度事件 ProgressEvent.code / 渲染层比对共用,
  * 禁止再散落魔法字符串(字符串匹配用户可读 message 属于反模式) */
@@ -127,10 +173,63 @@ export const ERR = {
   BAD_URL: 'BAD_URL',
   OPEN_FAILED: 'OPEN_FAILED',
   NETWORK_FAILED: 'NETWORK_FAILED',
+  /** 目标卷剩余空间不足,事务/压缩未启动,原数据未触碰 */
+  SPACE_LOW: 'SPACE_LOW',
+  /** 修改后的临时副本结构/完整性校验失败,副本被丢弃,原归档未替换 */
+  VERIFY_FAILED: 'VERIFY_FAILED',
+  /** 归档替换环节失败(卷走细节:原归档保留或已还原) */
+  TXN_FAILED: 'TXN_FAILED',
+  /** 资源防护熔断:条目数/总体积/单文件/压缩比/运行时长超限,或执行中监控越界;半产物已清理,原归档未触碰 */
+  GUARD_LIMIT: 'GUARD_LIMIT',
+  /** 路径与链接安全拦截:穿越/绝对/盘符/UNC/保留设备名/数据流/链接条目/重复落点 */
+  UNSAFE_PATH: 'UNSAFE_PATH',
 } as const;
+
+/** 启动时陈旧事务的恢复结果(阶段 3.1):restored=半替换中断被还原的归档,cleaned=清理掉的残留副本 */
+export interface TxnRecoveryInfo {
+  restored: string[];
+  cleaned: string[];
+}
 
 /** 任务类型 */
 export type JobKind = 'compress' | 'extract' | 'test' | 'delete';
+
+/**
+ * 持久化任务状态机(阶段 3.4)。恢复原则:恢复状态不重放任务。
+ * running/queued 是崩溃前瞬态,重启后被映射,不会长期存在;
+ * interrupted=上次运行中断(不假定成功或失败);retryable=排队任务重启且源文件校验通过,
+ * 等待用户手动重发——系统绝不自动重放。
+ */
+export type PersistedTaskStatus =
+  | 'running' | 'queued'
+  | 'done' | 'error' | 'cancelled'
+  | 'interrupted' | 'retryable';
+
+/** 持久化任务记录:只存状态与路径,不存密码、错误文案、引擎日志(脱敏红线) */
+export interface PersistedTask {
+  id: string;
+  kind: JobKind;
+  label: string;
+  /** 源压缩包路径;压缩任务为首个源(可缺) */
+  src?: string;
+  /** 输出归档/解压目标目录(可缺) */
+  out?: string;
+  createdAt: number;
+  finishedAt?: number;
+  status: PersistedTaskStatus;
+  /** 机读错误码(ERR.*),不存人类可读消息 */
+  errCode?: string;
+  /** 进度摘要 0-100 */
+  percent?: number;
+  /** 启动恢复时置位:该任务的归档曾被事务 journal 回滚(任务结果=事务恢复,非引擎完成) */
+  txnRolledBack?: boolean;
+}
+
+/** 版本化历史文件结构:格式演进时递增 version,旧版/未知版本按隔离处理 */
+export interface TaskHistoryFile {
+  version: 1;
+  tasks: PersistedTask[];
+}
 
 /** 主进程推送的进度事件 */
 export interface ProgressEvent {
@@ -278,6 +377,8 @@ export interface Settings {
   listColumnWidths: { type?: number; size?: number; time?: number; name?: number };
   /** 被拖到 0 而隐藏的列(名称列不可隐藏);表头右键菜单可恢复 */
   hiddenColumns: string[];
+  /** 解压资源防护上限覆盖(阶段 3.2):缺省=DEFAULT_GUARD 安全默认值;放开上限属明确风险操作 */
+  guard: Partial<GuardLimits>;
 }
 
 /** 启动载荷:通过 argv 打开的初始目标 */
