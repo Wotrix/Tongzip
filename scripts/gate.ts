@@ -105,9 +105,10 @@ function auditArtifacts(): void {
   mustFile(path.join(unpacked, 'resources', 'archive.ico'), 1000);
   mustFile(path.join(unpacked, 'resources', 'app.asar'), 1024 * 1024);
   /* asar 未压缩存文本:用字符串字面量验证 3.4 持久化代码真的打进了产物(防旧产物蒙混)。
-     只选 minify 后仍原样保留的标记:文件名/IPC 通道串/UI 文案,不用会被改名的标识符 */
+     只选 minify 后仍原样保留的标记:文件名/IPC 通道串;UI 中文文案会被打包工具
+     _0x base64 编码(CI 实测),不当标记用 */
   const asar = fs.readFileSync(path.join(unpacked, 'resources', 'app.asar'));
-  for (const marker of ['tongzip-history.json', 'tongzip-txn.json', 'tz:history-get', '上次运行中断']) {
+  for (const marker of ['tongzip-history.json', 'tongzip-txn.json', 'tz:history-get', 'tz:history-clear', 'tz:task-path-set']) {
     if (!asar.includes(marker)) throw new Error(`app.asar 缺少实现标记「${marker}」(产物与源码不同步)`);
   }
 }

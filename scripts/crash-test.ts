@@ -355,6 +355,10 @@ async function caseC2(): Promise<void> {
     killHard(app.proc.pid);
     engPids.forEach(killHard);
     app = null;
+    /* 必须等引擎子进程彻底消失再重启:被强杀的 7za 对 .tztmp 的写句柄释放有延迟,
+       若带句柄重启,新应用启动恢复对副本 rmSync 会失败(记录被留在 journal 待重试),
+       "journal 清零"永不达成。慢速 CI 机器本地侥幸不再成立 */
+    await waitFor('引擎进程确已消失(文件句柄释放,避免副本删除竞态)', () => enginePids(work).length === 0, 15000);
 
     const app2 = spawnApp(ud, await pickFreePort());
     app = app2;
