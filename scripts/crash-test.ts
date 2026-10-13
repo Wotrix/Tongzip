@@ -15,6 +15,8 @@
  * 边界如实:C3 的 swap 窗口为毫秒级两次原子 rename,真实进程 kill 无法确定性命中,
  * 其磁盘中间态由本控制器执行与 commitTxnSwap 相同的 rename 序列构造(故障注入),
  * 恢复判定 100% 走真实应用启动代码;C1/C2/C4 是货真价实的强制终止演练。
+ * C1/C2 强杀落点用 kill 后的 journal 证据判定(捕捉窗口可能落在校验阶段,提交仅在毫秒之外),
+ * 错过声明窗口即换新现场重做(最多 3 次),绝不拿错时机的崩溃冒充目标时机的验证。
  *
  * 纪律:独立临时目录 + 隔离 --user-data-dir,绝不触碰真实用户文件;
  * 每案例硬超时,finally 级清理(spawn 的 pid 全记录,退出前逐个 taskkill /F + 目录删除)。
@@ -40,10 +42,15 @@ function assert(cond: unknown, msg: string): void {
 /* ---------------- 基础工具 ---------------- */
 
 const spawned = new Set<number>();
+/** 快杀:process.kill 在 Windows 即 TerminateProcess(亚毫秒落地)——崩溃演练的"杀必杀在窗口内"
+   靠它;taskkill 启动开销上百 ms,强杀落点会被提交节奏超越。进程树/孤儿清理仍用 taskkill /F /T 兜底 */
 function killHard(pid: number | undefined): void {
   if (!pid || pid < 0) return;
-  try { execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' }); } catch { /* 已退出 */ }
+  try { process.kill(pid); } catch { /* 已退出 */ }
   spawned.delete(pid);
+}
+function killTree(pid: number): void {
+  try { execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' }); } catch { /* noop */ }
 }
 
 function pidAlive(pid: number): boolean {
@@ -53,7 +60,7 @@ function pidAlive(pid: number): boolean {
 /** 全局兜底清理:任何退出路径都不留孤儿进程与临时目录 */
 const dirs: string[] = [];
 function cleanupAll(): void {
-  for (const pid of spawned) { try { execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' }); } catch { /* noop */ } }
+  for (const pid of spawned) killTree(pid);
   for (const d of dirs) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* 占用则跳过 */ } }
 }
 process.on('exit', cleanupAll);
@@ -201,6 +208,29 @@ function txnRecords(ud: string): TxnRecLike[] {
   return j?.records ?? [];
 }
 
+/** 严格判定 journal"清零":文件必须可解析且 records 为空数组——撕裂/乱码读成 0 条绝不接受
+   (CI 实测:非原子写被强杀命中时 journal 撕裂,宽松判定会假通过并掩盖副本残留) */
+function txnJournalCleared(ud: string): boolean {
+  try {
+    const j = JSON.parse(fs.readFileSync(txnFile(ud), 'utf8')) as { records?: unknown };
+    return Array.isArray(j.records) && j.records.length === 0;
+  } catch { return false; }
+}
+
+/** journal 文件原文预览(崩溃现场取证用;无文件/读取失败都如实报) */
+function readJournalRaw(ud: string): string {
+  try { return (fs.readFileSync(txnFile(ud), 'utf8').replace(/\s+/g, ' ').slice(0, 400)) || '<空文件>'; } catch { return '<无文件>'; }
+}
+
+/** 强杀后 journal 快照(应用已死,不会再写):torn=true 表示文件存在但解析失败——
+ *  原子替换写后任何时刻都不该撕裂,出现即产品持久化缺陷的实锤 */
+function inspectJournal(ud: string): { records: TxnRecLike[]; torn: boolean } {
+  if (!fs.existsSync(txnFile(ud))) return { records: [], torn: false };
+  const j = readJsonSafe<{ records?: unknown }>(txnFile(ud));
+  if (!j || !Array.isArray(j.records)) return { records: [], torn: true };
+  return { records: j.records as TxnRecLike[], torn: false };
+}
+
 /** 递归扫描演练目录全部文件,敏感串零残留(密码等) */
 function scanForLeaks(dir: string, needle: string): string[] {
   const hits: string[] = [];
@@ -221,19 +251,20 @@ function scanForLeaks(dir: string, needle: string): string[] {
 /* ---------------- 测试数据构造(用随包引擎,与演练应用同版本) ---------------- */
 
 /**
- * 捕捉「事务记录在场 && 引擎进程活着」的真实崩溃窗口:
- * journal 用 fs 读轮询(20ms),引擎 pid 用 tasklist 一次快检(~150ms)——两个廉价检查在同一次
- * 采样中同时为真即返回可杀目标。CIM(Get-CimInstance)冷启动 1-2s,放进采样循环会让引擎秒完
- * 都追不上(上上轮实测 800MB store 解压全程仅 702ms),只保留在非关键路径做目录归属复核。
- * 引擎归属保证:journal 记录在场 ⇒ 该记录由本演练应用写出,窗口内的 7za 即演练引擎;
- * 演练期间不允许无关 7za 存在(CI 干净环境原则,门禁文档已注明)。
- * 超时抛错附现场快照,区分"没启动 / 秒完成错过 / 记录没写"三种形态。
+ * 捕捉「事务记录在场 && 引擎进程活着」的真实崩溃窗口。两阶段分工(本地 CI 节奏实测):
+ * ① journal 便宜 20ms 轮询先把应用拦在目标 stage(记录在场即任务未收尾,这条判据响应快;
+ *    旧版每轮都附带 tasklist ~150ms,响应迟钝到引擎自然终后才检出,强杀永远落在提交之后);
+ * ② 命中后才做一次性引擎快检——活着则当场先杀引擎再杀应用(杀序反转保证在飞引擎必死在快照里,
+ *    不给它跑到提交的机会);不活则继续轮询等下一次在飞窗口。
+ * 真正的"切在中途"实锤不依赖这里,而是 kill 后 journal 仍持目标记录(C1/C2 落点判定)。
+ * CIM(Get-CimInstance)冷启动 1-2s 只用于非关键路径的目录归属复核;演练期间不允许无关
+ * 7za 存在(CI 干净环境原则,门禁文档已注明)。超时抛错附现场快照,区分"没启动/秒完成错过/记录没写"。
  */
-async function catchLiveWindow(ud: string, work: string, match: (r: TxnRecLike) => boolean, desc: string, timeoutMs = 45000): Promise<number[]> {
+async function catchLiveWindow(ud: string, work: string, match: (r: TxnRecLike) => boolean, desc: string, timeoutMs = 45000, extra?: () => boolean): Promise<number[]> {
   const t0 = Date.now();
   for (;;) {
-    if (txnRecords(ud).some(match)) {
-      const pids = enginePidsFast(); // 记录在场 = 任务未收尾;同一采样内双真即具备强杀条件
+    if (txnRecords(ud).some(match) && (!extra || extra())) {
+      const pids = enginePidsFast(); // 一次性快检:记录在场 + 引擎同帧在飞 → 具备强杀条件
       if (pids.length) return pids;
     }
     if (Date.now() - t0 > timeoutMs) throw new Error(`超时(${timeoutMs}ms):${desc} ;; ${dumpDrillState(ud, work)}`);
@@ -272,111 +303,135 @@ const q = (s: string) => JSON.stringify(s).replace(/\\/g, '\\\\');
 
 async function caseC1(): Promise<void> {
   console.log('--- C1 解压任务执行中强制终止 ---');
-  const ud = mkTemp('tz-crash1-ud-');
-  const work = mkTemp('tz-crash1-w-');
-  let app: App | null = null;
-  try {
-    const big = path.join(work, 'big.bin');
-    makeLowEntropy(big, 400);
-    const arc = path.join(work, 'enc.7z');
-    engineCli(['a', `-p${PW}`, '-mx1', arc, big]);
-    const dest = path.join(work, 'out');
+  /* 强杀可能晚于提交(CI/本地实测两种落点都出现过):落点以 kill 后的 journal 证据判定,
+     错过窗口就换新现场重做(最多 3 次),绝不把"提交后才崩"冒充"执行中崩溃"来断言 */
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const ud = mkTemp('tz-crash1-ud-');
+    const work = mkTemp('tz-crash1-w-');
+    let app: App | null = null;
+    try {
+      const big = path.join(work, 'big.bin');
+      makeLowEntropy(big, 400);
+      const arc = path.join(work, 'enc.7z');
+      engineCli(['a', `-p${PW}`, '-mx1', arc, big]);
+      const dest = path.join(work, 'out');
 
-    app = spawnApp(ud, await pickFreePort());
-    await waitReady(app);
-    const jobId = await startTask(app,
-      `window.tz.extract({archive:${q(arc)},dest:${q(dest)},overwrite:'skip',password:${q(PW)}})`,
-      `{archive:${q(arc)},dest:${q(dest)}}`);
+      app = spawnApp(ud, await pickFreePort());
+      await waitReady(app);
+      const jobId = await startTask(app,
+        `window.tz.extract({archive:${q(arc)},dest:${q(dest)},overwrite:'skip',password:${q(PW)}})`,
+        `{archive:${q(arc)},dest:${q(dest)}}`);
 
-    const engPids = await catchLiveWindow(ud, work, (r) => r.kind === 'extract',
-      'journal 出现 extract 暂存记录且引擎在跑(任务确实执行中)', 45000);
-    /* 引擎在场时历史记录只会是 running(终态尚未发生);400ms 去抖落盘,此刻读到即证据 */
-    await waitFor('历史已持久化 running(引擎执行中的记录已落盘)', () =>
-      histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'), 10000, 20,
-      () => dumpDrillState(ud, work, jobId) + ` ;; jobId=${jobId} histFile=${fs.existsSync(histFile(ud))}`);
+      /* 历史持久化 running 折进捕捉条件同帧判定:旧版在捕捉后才串行等 400ms 去抖落盘,
+         这段等待在快机器上恰好吞掉整个提交前窗口(本地实测三次落点全漂到提交后) */
+      const engPids = await catchLiveWindow(ud, work, (r) => r.kind === 'extract',
+        'journal 出现 extract 暂存记录且引擎在跑(任务确实执行中)', 45000,
+        () => histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'));
 
-    /* 模拟非正常退出:强杀主进程 + 引擎子进程(Windows 子进程不随父死亡,必须都杀) */
-    killHard(app.proc.pid);
-    engPids.forEach(killHard);
-    app = null;
-    await waitFor('引擎进程确已消失', () => enginePids(work).length === 0, 10000);
+      /* 模拟非正常退出:快杀主进程(TerminateProcess 亚毫秒)再杀快照内引擎;
+         晚于快照出生的探针/残兵自会自然终了,由后续"引擎确已消失"等待兜底 */
+      killHard(app.proc.pid);
+      engPids.forEach(killHard);
+      app = null;
+      await waitFor('引擎进程确已消失', () => enginePids(work).length === 0, 10000);
+      /* 落点判定:应用已死,journal 仍持 extract 在飞记录 = 确实切在执行中 */
+      const post = inspectJournal(ud);
+      console.log(`[C1] 强杀后现场(第${attempt}次):journal=${readJournalRaw(ud)} ;; work目录=${fs.readdirSync(work).join('|')}`);
+      if (post.torn) { assert(false, `C1 journal 被强杀撕裂(原子替换写回归):${readJournalRaw(ud)}`); return; }
+      if (!post.records.some((r) => r.kind === 'extract')) { console.log(`[C1] 第${attempt}次强杀落点过晚(事务已提交),换新现场重做`); continue; }
 
-    const stageGoneCheck = () => fs.readdirSync(path.dirname(dest)).some((n) => n.includes('tzstage'));
-    const hadStage = stageGoneCheck();
+      const stageGoneCheck = () => fs.readdirSync(path.dirname(dest)).some((n) => n.includes('tzstage'));
+      const hadStage = stageGoneCheck();
 
-    /* 重启:不带任何任务开关,验证恢复且不自动重放 */
-    const app2 = spawnApp(ud, await pickFreePort());
-    app = app2;
-    await waitFor('重启后 journal 清零(extract 暂存被回收)', () => txnRecords(ud).length === 0, 30000);
-    await waitFor('重启后历史定格 interrupted', () => histStatus(ud, jobId) === 'interrupted', 30000);
-    assert(hadStage, 'C1 崩溃现场存在隔离暂存目录(演练确实切在解压中途)');
-    assert(!stageGoneCheck(), 'C1 重启恢复后暂存残留被清理');
-    const landed = fs.existsSync(dest) ? fs.readdirSync(dest) : [];
-    assert(landed.length === 0, `C1 未提交半成品没有进入目标目录(${landed.length} 项)`);
-    await new Promise((r) => setTimeout(r, 3000));
-    assert(enginePids(work).length === 0, 'C1 重启后 3 秒内无引擎进程 = 没有自动重放');
-    assert(!histTasks(ud).some((t) => t.status === 'running'), 'C1 重启后无新 running 记录');
-    for (const leak of [...scanForLeaks(ud, PW), ...scanForLeaks(work, PW)]) assert(false, `C1 敏感数据残留:${leak}`);
-    assert(true, 'C1 userData 与演练目录零密码残留');
-  } finally {
-    if (app) killHard(app.proc.pid);
-    enginePids(work).forEach(killHard);
+      /* 重启:不带任何任务开关,验证恢复且不自动重放 */
+      const app2 = spawnApp(ud, await pickFreePort());
+      app = app2;
+      await waitFor('重启后 journal 清零(extract 暂存被回收)', () => txnJournalCleared(ud), 30000, 20,
+        () => dumpDrillState(ud, work) + ` ;; journal原文=${readJournalRaw(ud)}`);
+      await waitFor('重启后历史定格 interrupted', () => histStatus(ud, jobId) === 'interrupted', 30000);
+      assert(hadStage, 'C1 崩溃现场存在隔离暂存目录(演练确实切在解压中途)');
+      assert(!stageGoneCheck(), 'C1 重启恢复后暂存残留被清理');
+      const landed = fs.existsSync(dest) ? fs.readdirSync(dest) : [];
+      assert(landed.length === 0, `C1 未提交半成品没有进入目标目录(${landed.length} 项)`);
+      await new Promise((r) => setTimeout(r, 3000));
+      assert(enginePids(work).length === 0, 'C1 重启后 3 秒内无引擎进程 = 没有自动重放');
+      assert(!histTasks(ud).some((t) => t.status === 'running'), 'C1 重启后无新 running 记录');
+      for (const leak of [...scanForLeaks(ud, PW), ...scanForLeaks(work, PW)]) assert(false, `C1 敏感数据残留:${leak}`);
+      assert(true, 'C1 userData 与演练目录零密码残留');
+      return;
+    } finally {
+      if (app) killHard(app.proc.pid);
+      enginePids(work).forEach(killHard);
+    }
   }
+  assert(false, 'C1 三次强杀都未命中执行中窗口(时序不稳定,拒绝冒充已验证)');
 }
 
 /* ---------------- C2:修改事务提交前(staged)真实崩溃 ---------------- */
 
 async function caseC2(): Promise<void> {
   console.log('--- C2 归档修改事务 staged 阶段强制终止 ---');
-  const ud = mkTemp('tz-crash2-ud-');
-  const work = mkTemp('tz-crash2-w-');
-  let app: App | null = null;
-  try {
-    const arc = path.join(work, 'mod.7z');
-    makeLowEntropy(path.join(work, 'big.bin'), 300);
-    fs.writeFileSync(path.join(work, 'small.txt'), 'delete me please');
-    engineCli(['a', `-p${PW}`, '-mx1', arc, path.join(work, 'big.bin'), path.join(work, 'small.txt')]);
-    const hashBefore = sha256(arc);
+  /* 捕捉窗口可能是校验阶段的 7za,此时提交只在毫秒之外:kill 后用 journal 证据定落点,
+     错过 staged 窗口就换新现场重做(最多 3 次);撕裂则直接是产品持久化缺陷实锤 */
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const ud = mkTemp('tz-crash2-ud-');
+    const work = mkTemp('tz-crash2-w-');
+    let app: App | null = null;
+    try {
+      const arc = path.join(work, 'mod.7z');
+      makeLowEntropy(path.join(work, 'big.bin'), 300);
+      fs.writeFileSync(path.join(work, 'small.txt'), 'delete me please');
+      engineCli(['a', `-p${PW}`, '-mx1', arc, path.join(work, 'big.bin'), path.join(work, 'small.txt')]);
+      const hashBefore = sha256(arc);
 
-    app = spawnApp(ud, await pickFreePort());
-    await waitReady(app);
-    const jobId = await startTask(app,
-      `window.tz.deleteEntries(${q(arc)}, ['small.txt'], ${q(PW)})`,
-      `{archive:${q(arc)}}`);
+      app = spawnApp(ud, await pickFreePort());
+      await waitReady(app);
+      const jobId = await startTask(app,
+        `window.tz.deleteEntries(${q(arc)}, ['small.txt'], ${q(PW)})`,
+        `{archive:${q(arc)}}`);
 
-    const engPids = await catchLiveWindow(ud, work, (r) => r.stage === 'staged' && !r.kind,
-      'journal 进入 staged 且引擎在改副本(事务提交前窗口)', 45000);
-    await waitFor('历史已持久化 running(引擎执行中的记录已落盘)', () =>
-      histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'), 10000, 20,
-      () => dumpDrillState(ud, work, jobId) + ` ;; jobId=${jobId} histFile=${fs.existsSync(histFile(ud))}`);
-    const rec = txnRecords(ud).find((r) => r.stage === 'staged' && !r.kind);
-    if (rec) assert(fs.existsSync(rec.tmp), 'C2 staged:副本(.tztmp)存在,修改只触碰副本');
+      const engPids = await catchLiveWindow(ud, work, (r) => r.stage === 'staged' && !r.kind,
+        'journal 进入 staged 且引擎在改副本(事务提交前窗口)', 45000,
+        () => histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'));
 
-    killHard(app.proc.pid);
-    engPids.forEach(killHard);
-    app = null;
-    /* 必须等引擎子进程彻底消失再重启:被强杀的 7za 对 .tztmp 的写句柄释放有延迟,
-       若带句柄重启,新应用启动恢复对副本 rmSync 会失败(记录被留在 journal 待重试),
-       "journal 清零"永不达成。慢速 CI 机器本地侥幸不再成立 */
-    await waitFor('引擎进程确已消失(文件句柄释放,避免副本删除竞态)', () => enginePids(work).length === 0, 15000);
+      /* 捕捉返回即杀(无任何串行等待夹在中间):快杀让"提交前"落点在快机器上也能确定性命中 */
+      killHard(app.proc.pid);
+      engPids.forEach(killHard);
+      app = null;
+      /* 必须等引擎子进程彻底消失再重启:被强杀的 7za 对 .tztmp 的写句柄释放有延迟,
+         若带句柄重启,新应用启动恢复对副本 rmSync 会失败(记录被留在 journal 待重试),
+         "journal 清零"永不达成。慢速 CI 机器本地侥幸不再成立 */
+      await waitFor('引擎进程确已消失(文件句柄释放,避免副本删除竞态)', () => enginePids(work).length === 0, 15000);
+      /* 崩溃现场快照固化 + 落点判定:应用已死,journal 仍持 staged 记录 = 确实切在提交前 */
+      const post = inspectJournal(ud);
+      console.log(`[C2] 强杀后现场(第${attempt}次):journal=${readJournalRaw(ud)} ;; work目录=${fs.readdirSync(work).join('|')}`);
+      if (post.torn) { assert(false, `C2 journal 被强杀撕裂(原子替换写回归):${readJournalRaw(ud)}`); return; }
+      if (!post.records.some((r) => r.stage === 'staged' && !r.kind)) { console.log(`[C2] 第${attempt}次强杀落点过晚(提交已开始),换新现场重做`); continue; }
+      const rec = post.records.find((r) => r.stage === 'staged' && !r.kind);
+      if (rec) assert(fs.existsSync(rec.tmp), 'C2 staged:副本(.tztmp)存在,修改只触碰副本');
 
-    const app2 = spawnApp(ud, await pickFreePort());
-    app = app2;
-    await waitFor('重启后 journal 清零', () => txnRecords(ud).length === 0, 30000);
-    await waitFor('重启后历史定格 interrupted', () => histStatus(ud, jobId) === 'interrupted', 30000);
-    assert(sha256(arc) === hashBefore, 'C2 提交前崩溃:原归档逐字节不变,用户文件得到保护');
-    assert(!rec || !fs.existsSync(rec.tmp), 'C2 staged 副本按规则被启动回收清理');
-    assert(!fs.readdirSync(work).some((n) => n.includes('.tzbak') || n.includes('.tztmp')), 'C2 无事务残留文件');
-    const t = histTasks(ud).find((x) => x.id === jobId)!;
-    assert(!t.txnRolledBack, 'C2 staged 崩溃不进 restored 清单,不误标事务回滚(原归档从未被动过)');
-    await new Promise((r) => setTimeout(r, 2000));
-    assert(enginePids(work).length === 0, 'C2 重启后无自动重放');
-    for (const leak of [...scanForLeaks(ud, PW), ...scanForLeaks(work, PW)]) assert(false, `C2 敏感数据残留:${leak}`);
-    assert(true, 'C2 演练目录零密码残留');
-  } finally {
-    if (app) killHard(app.proc.pid);
-    enginePids(work).forEach(killHard);
+      const app2 = spawnApp(ud, await pickFreePort());
+      app = app2;
+      await waitFor('重启后 journal 清零', () => txnJournalCleared(ud), 30000, 20,
+        () => dumpDrillState(ud, work) + ` ;; journal原文=${readJournalRaw(ud)}`);
+      await waitFor('重启后历史定格 interrupted', () => histStatus(ud, jobId) === 'interrupted', 30000);
+      assert(sha256(arc) === hashBefore, 'C2 提交前崩溃:原归档逐字节不变,用户文件得到保护');
+      assert(!rec || !fs.existsSync(rec.tmp), 'C2 staged 副本按规则被启动回收清理');
+      const leftovers = fs.readdirSync(work).filter((n) => n.includes('.tzbak') || n.includes('.tztmp'));
+      assert(leftovers.length === 0, `C2 无事务残留文件(实际残留:${leftovers.join('|') || '无'})`);
+      const t = histTasks(ud).find((x) => x.id === jobId)!;
+      assert(!t.txnRolledBack, 'C2 staged 崩溃不进 restored 清单,不误标事务回滚(原归档从未被动过)');
+      await new Promise((r) => setTimeout(r, 2000));
+      assert(enginePids(work).length === 0, 'C2 重启后无自动重放');
+      for (const leak of [...scanForLeaks(ud, PW), ...scanForLeaks(work, PW)]) assert(false, `C2 敏感数据残留:${leak}`);
+      assert(true, 'C2 演练目录零密码残留');
+      return;
+    } finally {
+      if (app) killHard(app.proc.pid);
+      enginePids(work).forEach(killHard);
+    }
   }
+  assert(false, 'C2 三次强杀都未命中 staged 提交前窗口(时序不稳定,拒绝冒充已验证)');
 }
 
 /* ---------------- C3:提交边界(故障注入磁盘中间态 + 真实应用恢复) ---------------- */
@@ -413,7 +468,8 @@ async function caseC3(name: string, c: C3Case): Promise<void> {
     }), 'utf8');
 
     app = spawnApp(ud, await pickFreePort());
-    await waitFor('注入记录被真实恢复流程消费(journal 清零)', () => txnRecords(ud).length === 0, 30000);
+    await waitFor('注入记录被真实恢复流程消费(journal 清零)', () => txnJournalCleared(ud), 30000, 20,
+      () => `;; journal原文=${readJournalRaw(ud)}`);
     await waitFor('历史定格 interrupted', () => histStatus(ud, 'inj-task') === 'interrupted', 20000);
 
     const t = histTasks(ud).find((x) => x.id === 'inj-task')!;
@@ -462,7 +518,7 @@ async function caseC4(): Promise<void> {
     const t = histTasks(ud).find((x) => x.id === jobId)!;
     assert(t.status === 'done' && typeof t.finishedAt === 'number', 'C4 正常退出保留终态,无 interrupted');
     assert(fs.readFileSync(path.join(dest, 'a.txt'), 'utf8') === 'hello-crash-drill', 'C4 解压产物完整落位');
-    assert(txnRecords(ud).length === 0, 'C4 退出后 journal 无残留记录');
+    assert(txnJournalCleared(ud), 'C4 退出后 journal 清零且可解析(无残留记录)');
     app = null;
   } finally {
     if (app) killHard(app.proc.pid);

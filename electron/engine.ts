@@ -523,12 +523,28 @@ function readTxnJournal(): TxnRecord[] {
   try {
     const j = JSON.parse(fs.readFileSync(txnJournalFile, 'utf8')) as { records?: unknown };
     return Array.isArray(j.records) ? (j.records as TxnRecord[]) : [];
-  } catch { return []; }
+  } catch {
+    /* 文件在但解析失败=撕裂(CI 崩溃演练实测:非原子写被强杀命中 truncate 窗口,
+       撕裂被当"无记录"→ 恢复早退 → .tztmp 副本永久残留)。隔离留证,后续从空重建 */
+    try {
+      if (fs.existsSync(txnJournalFile)) fs.renameSync(txnJournalFile, `${txnJournalFile}.corrupt-${Date.now()}`);
+    } catch { /* 隔离失败不阻断,后续写入仍会覆盖 */ }
+    return [];
+  }
 }
+/** 原子替换写:先落 .swap 再 rename 覆盖;强杀任何时刻 journal 只会是完整旧版或新版,不会撕裂。
+    rename 失败(AV 占用目标文件)回落直写——带撕裂风险也好过整条记录丢 */
 function writeTxnJournal(records: TxnRecord[]): void {
+  const data = JSON.stringify({ v: 1, records }, null, 2);
   try {
     fs.mkdirSync(path.dirname(txnJournalFile), { recursive: true });
-    fs.writeFileSync(txnJournalFile, JSON.stringify({ v: 1, records }, null, 2), 'utf8');
+    const swap = `${txnJournalFile}.swap`;
+    try {
+      fs.writeFileSync(swap, data, 'utf8');
+      fs.renameSync(swap, txnJournalFile);
+      return;
+    } catch { /* 走回落 */ }
+    fs.writeFileSync(txnJournalFile, data, 'utf8');
   } catch { /* journal 写失败不阻断操作,代价是崩溃恢复能力下降 */ }
 }
 function txnUpsert(rec: TxnRecord): void {

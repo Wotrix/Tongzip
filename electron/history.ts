@@ -37,10 +37,18 @@ function scheduleWrite(): void {
 export function flushTaskHistory(): void {
   if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
   if (!dirty || !historyFile) return;
+  const data = JSON.stringify({ version: 1, tasks: cache.slice(0, HISTORY_LIMIT) } as TaskHistoryFile, null, 2);
   try {
     fs.mkdirSync(path.dirname(historyFile), { recursive: true });
-    const data: TaskHistoryFile = { version: 1, tasks: cache.slice(0, HISTORY_LIMIT) };
-    fs.writeFileSync(historyFile, JSON.stringify(data, null, 2), 'utf8');
+    /* 原子替换:消除直写 truncate 窗口被强杀命中致历史撕裂的同类隐患(CI 崩溃演练在 journal 上实测到) */
+    const swap = `${historyFile}.swap`;
+    try {
+      fs.writeFileSync(swap, data, 'utf8');
+      fs.renameSync(swap, historyFile);
+      dirty = false;
+      return;
+    } catch { /* rename 被占用:回落直写 */ }
+    fs.writeFileSync(historyFile, data, 'utf8');
     dirty = false;
   } catch { /* 磁盘满/无权限:内存状态保持,下次再试;绝不抛出打断任务链 */ }
 }
