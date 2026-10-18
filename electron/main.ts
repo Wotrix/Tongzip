@@ -130,8 +130,10 @@ function parseArgv(argv: string[]): LaunchPayload | null {
   const compressAsIdx = switchOf('compress-as');
   if (compressAsIdx >= 0) {
     const target = tryPath(args[compressAsIdx + 1]);
-    const ext = args[compressAsIdx + 2] ?? '.7z';
-    if (target) return { kind: 'compress', paths: [target, ext] };
+    /* ISS-11:token 原样移交渲染层经 shared 协议表解析;不再 default ".7z" 兜底,
+       未识别的显式格式请求由渲染层明确报错,禁止静默改格式 */
+    const token = args[compressAsIdx + 2];
+    if (target) return { kind: 'compress', paths: [target], ...(token ? { token } : {}) };
   }
   const compressDialogIdx = switchOf('compress-dialog');
   if (compressDialogIdx >= 0) {

@@ -13,7 +13,7 @@ import { app } from 'electron';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import type { ContextMenuSettings } from '../shared/types';
-import { ARCHIVE_EXTS, ARCHIVE_EXTS_OPENABLE, ARCHIVE_EXTS_SYS_ONLY } from '../shared/types';
+import { ARCHIVE_EXTS, ARCHIVE_EXTS_OPENABLE, ARCHIVE_EXTS_SYS_ONLY, COMPRESS_TOKENS } from '../shared/types';
 
 const run = promisify(execFile);
 const REG = 'reg.exe';
@@ -73,11 +73,20 @@ function appIcon(): string {
 
 interface ItemDef { key: string; label: string; args: string }
 
+/** ISS-11:菜单命令 token 必须命中 shared 协议表(COMPRESS_TOKENS),
+ *  注册时硬校验,防止命令面与格式解析词表再次漂移 */
+function compressItem(itemKey: string, label: string, token: string): ItemDef {
+  if (!COMPRESS_TOKENS.includes(token)) {
+    throw new Error(`菜单命令 token "${token}" 不在压缩格式协议表(COMPRESS_TOKENS)内,拒绝注册`);
+  }
+  return { key: itemKey, label, args: `--compress-as "%1" "${token}"` };
+}
+
 function compressItems(o: ContextMenuSettings): ItemDef[] {
   const all: [keyof ContextMenuSettings, ItemDef][] = [
-    ['compress7z', { key: 'Compress7z', label: '压缩为 7z', args: '--compress-as "%1" ".7z"' }],
-    ['compressZip', { key: 'CompressZip', label: '压缩为 ZIP', args: '--compress-as "%1" ".zip"' }],
-    ['compressTarGz', { key: 'CompressTarGz', label: '压缩为 tar.gz', args: '--compress-as "%1" ".tar.gz"' }],
+    ['compress7z', compressItem('Compress7z', '压缩为 7z', '.7z')],
+    ['compressZip', compressItem('CompressZip', '压缩为 ZIP', '.zip')],
+    ['compressTarGz', compressItem('CompressTarGz', '压缩为 tar.gz', '.tar.gz')],
     ['compressDialog', { key: 'CompressDialog', label: '压缩选项…', args: '--compress-dialog "%1"' }],
   ];
   return all.filter(([k]) => o[k]).map(([, v]) => v);

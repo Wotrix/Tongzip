@@ -17,7 +17,8 @@ const FORMATS: { v: ArchiveFormat; label: string; hint: string }[] = [
   { v: '7z', label: '7Z', hint: '压缩率最高,推荐' },
   { v: 'zip', label: 'ZIP', hint: '兼容性最好' },
   { v: 'tar.gz', label: 'TAR.GZ', hint: 'Linux / macOS 通用' },
-  { v: 'tar.xz', label: 'TAR.XZ', hint: '更高压缩率的 tar' },
+  { v: 'tar.bz2', label: 'TAR.BZ2', hint: '更高压缩率的 tar' },
+  { v: 'tar.xz', label: 'TAR.XZ', hint: '最高压缩率的 tar' },
   { v: 'tar', label: 'TAR', hint: '仅打包不压缩' },
 ];
 

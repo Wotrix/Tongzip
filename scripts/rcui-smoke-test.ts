@@ -261,14 +261,19 @@ function grepSentinel(dir: string, needle: string): string[] {
 async function scenarioC4(work: string): Promise<void> {
   const src = path.join(work, 'payload.txt');
   fs.writeFileSync(src, 'tongzip rc ui smoke payload');
-  let dialogSeen = false, noteHit = '', fmt7z = false, evs = -1, spill = 'n/a';
-  let gzNote = false, gzFmt = '';
+  const ARCH_RE = /\.(7z|zip|tar(\.(gz|bz2|xz|zst))?|tgz|txz)$/i;
+  const archivesIn = (d: string) => fs.readdirSync(d).filter((f) => ARCH_RE.test(f));
+  let dialogSeen = false, noteHit = '', fmt7z = false, evs = -1, spill1 = 'n/a';
+  let gzFmt = '', gzNote = false;
+  let genName = '', magicOk = false, doneToast = '';
+  let badToast = '', badDialog = true;
   const triggerTextExpr = `(() => {
     const lab = [...document.querySelectorAll('label')].find(l => (l.textContent || '').trim() === '格式');
     const f = lab && lab.parentElement ? lab.parentElement.querySelector('button') : null;
     return f ? String(f.textContent || '') : 'NOBTN';
   })()`;
   await withApp(async (app, deliver) => {
+    /* ① 不可创建格式 .tar.zst:必须明示回退(ISS-02 fmtNote 路径),引擎不被调起 */
     await deliver(['--compress-as', src, '.tar.zst']);
     await waitForDialog(app);
     dialogSeen = true;
@@ -288,31 +293,56 @@ async function scenarioC4(work: string): Promise<void> {
     await shot(app, 'rc-c4-tarzst-fallback-note.png');
     await new Promise((r) => setTimeout(r, 1200));
     evs = (await collectEvents(app)).length;
-    spill = fs.readdirSync(work).filter((f) => /\.(7z|zip|tar(\.\w+)?|tgz|txz)$/i.test(f)).join(',') || '无';
-    /* ISS-11 证据腿:关窗 → 用真实已发货菜单 token ".tar.gz" 重开 → 观测是否静默降 7Z */
-    const cancelDiag = await ev(app, `(() => {
-      const bs = [...document.querySelectorAll('.foot button')];
-      const c = bs.find(x => !String(x.className).includes('primary'));
-      const r = c ? (c.click(), 'clicked') : 'NOBTN';
-      return JSON.stringify({ r, btns: bs.map(b => (b.textContent || '') + (b.disabled ? ':dis' : '')), h2: [...document.querySelectorAll('h2')].map(h => h.textContent) });
-    })()`);
-    console.log('cancel 诊断:', cancelDiag);
+    spill1 = archivesIn(work).join(',') || '无';
     await waitForDialogGone(app);
+    /* ② 已发货菜单真实 token .tar.gz:必须正确预设为 TAR.GZ(ISS-11 修复断言,不得静默降 7Z) */
     await deliver(['--compress-as', src, '.tar.gz']);
-    await waitForDialog(app, '创建压缩包');
-    gzNote = (await domTexts(app, '.note')).some((t) => /TAR\.GZ/.test(t ?? ''));
+    await waitForDialog(app);
+    gzNote = (await domTexts(app, '.note')).some((t) => /回退/.test(t ?? ''));
     gzFmt = String(await ev(app, triggerTextExpr) ?? '');
     await shot(app, 'rc-c4-targz-menu-token-actual.png');
+    /* ③ 真实链路提交:核验实际生成文件的格式(gzip magic 字节),不只查 UI 文案 */
+    await ev(app, `(() => { const b = [...document.querySelectorAll('.foot button')].find(x => x.className.includes('primary')); if (b && !b.disabled) b.click(); return b ? (b.disabled ? 'DISABLED' : 'clicked') : 'NOBTN'; })()`);
+    const g0 = Date.now();
+    for (;;) {
+      const outs = archivesIn(work);
+      if (outs.length) { genName = outs[0]; break; }
+      if (Date.now() - g0 > 45_000) break;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    if (genName) {
+      const fd = fs.openSync(path.join(work, genName), 'r');
+      const buf = Buffer.alloc(2); fs.readSync(fd, buf, 0, 2, 0); fs.closeSync(fd);
+      magicOk = buf[0] === 0x1f && buf[1] === 0x8b; // gzip 魔数:证明确为 TAR.GZ 而非 7Z
+      doneToast = ((await getToasts(app)).find((x) => !x.err && (x.text ?? '').includes('已生成'))?.text) ?? '';
+    }
+    await waitForDialogGone(app); // 任务 done 后对话框自动关闭
+    /* ④ 未知显式格式 token:必须明确报错、不开对话框、不执行任何操作(禁止静默回退) */
+    await deliver(['--compress-as', src, '.tar.lz5']);
+    const b0 = Date.now();
+    for (;;) {
+      const ts = await getToasts(app);
+      const hit = ts.find((x) => x.err && (x.text ?? '').includes('无法识别'));
+      if (hit) { badToast = hit.text ?? ''; break; }
+      if (Date.now() - b0 > 8000) break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    await new Promise((r) => setTimeout(r, 1500)); // 复核窗口期:报错后不应有任何对话框补开
+    badDialog = await ev(app, hasDialogExpr('创建压缩包')) === true;
+    await shot(app, 'rc-c4-unknown-token-error-toast.png');
   });
-  assert(dialogSeen && noteHit !== '', 'RC-C4:tar.zst 预设打开即明示回退 7Z(不静默)');
-  assert(fmt7z, 'RC-C4:格式选择器实际落在 7Z');
-  assert(evs === 0 && spill === '无', 'RC-C4:引擎未被调起、零落盘');
-  record({ id: 'UI-C4-01', item: '预设不支持格式的 UI 明示回退', expect: '回退提示在场+格式=7Z+无任务', actual: `note=${noteHit ? '有' : '无'}, 7Z=${fmt7z}, 事件=${evs}, 落盘=${spill}`, verdict: dialogSeen && noteHit && fmt7z && evs === 0 && spill === '无' ? 'ok' : 'mismatch', detail: '截图 rc-c4-tarzst-fallback-note.png' });
-  /* 缺陷候选登记(只登记不定改):EXT_TOKENS 收录 .tar.gz/.tar.bz2/.tar.xz/.tar.zst,
-     但 App.extToFormat 的 switch 只认 .gz/.tgz/.bz2/.xz/.zst/.zip/.tar —— 复合 token 全部落
-     default '7z':「压缩为 tar.gz」菜单实际预设 7Z 且无任何回退明示,ISS-02 的 UI 明示腿不可达 */
-  assert(gzNote || /TAR\.GZ/i.test(gzFmt), 'RC-C4/ISS-11:已发货菜单 token .tar.gz 不得静默降为 7Z(须预设 TAR.GZ 或明示回退)');
-  record({ id: 'UI-C4-02', item: '真实菜单 token ".tar.gz" 预设链路(缺陷候选 ISS-11)', expect: '预设 TAR.GZ 或明示回退原因', actual: `明示提示=${gzNote}, 格式按钮="${gzFmt.trim()}"`, verdict: gzNote || /TAR\.GZ/i.test(gzFmt) ? 'ok' : 'mismatch', detail: '根因观测:App.extToFormat 与 handlePayload.EXT_TOKENS 词表失配,复合 token 落 default 7z;截图 rc-c4-targz-menu-token-actual.png' });
+  const finalSpill = archivesIn(work);
+  assert(dialogSeen && noteHit !== '' && fmt7z && evs === 0 && spill1 === '无',
+    'RC-C4:tar.zst 预设打开即明示回退 7Z(不静默),引擎未被调起、零落盘');
+  record({ id: 'UI-C4-01', item: '预设不支持格式的 UI 明示回退', expect: '回退提示在场+格式=7Z+无任务', actual: `note=${noteHit ? '有' : '无'}, 7Z=${fmt7z}, 事件=${evs}, 落盘=${spill1}`, verdict: dialogSeen && noteHit && fmt7z && evs === 0 && spill1 === '无' ? 'ok' : 'mismatch', detail: '截图 rc-c4-tarzst-fallback-note.png' });
+  assert(!gzNote && /TAR\.GZ/i.test(gzFmt), 'RC-C4/ISS-11:已发货菜单 token .tar.gz 正确预设为 TAR.GZ(不静默降 7Z、无回退提示)');
+  record({ id: 'UI-C4-02', item: '真实菜单 token ".tar.gz" 预设链路(ISS-11 修复断言)', expect: '预设 TAR.GZ 且无回退提示', actual: `格式按钮="${gzFmt.trim()}", 回退提示=${gzNote}`, verdict: !gzNote && /TAR\.GZ/i.test(gzFmt) ? 'ok' : 'mismatch', detail: '截图 rc-c4-targz-menu-token-actual.png' });
+  assert(genName.endsWith('.tar.gz') && magicOk && !doneToast.startsWith('ERR') && doneToast.includes('已生成'),
+    `RC-C4/ISS-11 真实链路:菜单命令实际生成的文件确为 gzip 格式(魔数核验,gen=${genName || '无'})`);
+  record({ id: 'UI-C4-03', item: 'second-instance 真实链路实际生成格式核验(ISS-11)', expect: '落盘 .tar.gz+gzip 魔数+完成 toast', actual: `file=${genName || '无'}, gzipMagic=${magicOk}, toast="${doneToast.slice(0, 40)}"`, verdict: genName.endsWith('.tar.gz') && magicOk && doneToast.includes('已生成') ? 'ok' : 'mismatch', detail: '格式化意图=最终产物格式的直接证据(不依赖 UI 文案)' });
+  assert(badToast !== '' && !badDialog && finalSpill.length === 1,
+    'RC-C4/ISS-11:未知格式 token 明确报错,不开对话框、不执行任何操作');
+  record({ id: 'UI-C4-04', item: '未知显式格式 token 的拒绝呈现(ISS-11)', expect: 'err toast+对话框不开+零新增落盘', actual: `toast="${badToast.slice(0, 46)}", 对话框=${badDialog}, 归档数=${finalSpill.length}`, verdict: badToast !== '' && !badDialog && finalSpill.length === 1 ? 'ok' : 'mismatch', detail: '截图 rc-c4-unknown-token-error-toast.png' });
 }
 
 async function scenarioC3(work: string): Promise<void> {

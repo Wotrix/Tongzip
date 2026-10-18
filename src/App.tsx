@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArchiveEntry, ArchiveFormat, ArchiveInfo, ExtractJob, JobKind, Settings } from '@shared/types';
-import { ERR, isArchiveExt } from '@shared/types';
+import { ERR, isArchiveExt, tokenToFormat } from '@shared/types';
 import Home from './views/Home';
 import Browser, { type BrowserActions, type NavState } from './views/Browser';
 import FolderView from './views/FolderView';
@@ -315,7 +315,7 @@ function Shell() {
 
   /* ---------- shell / 双击 启动指令 ---------- */
   /* coldStart:仅冷启动载荷(getLaunchPayload)会自动折叠侧边栏;运行中二次实例移交不折叠 */
-  const handlePayload = useCallback((p: { kind: 'archive' | 'compress'; paths: string[] }, coldStart = false) => {
+  const handlePayload = useCallback((p: { kind: 'archive' | 'compress'; paths: string[]; token?: string }, coldStart = false) => {
     const flag = p.paths.find((x) => x.startsWith('--'));
     const real = p.paths.filter((x) => !x.startsWith('--'));
     if (p.kind === 'archive') {
@@ -332,12 +332,20 @@ function Shell() {
         else void openInTab(archive, undefined, true);
       }
     } else {
-      const EXT_TOKENS = ['.7z', '.zip', '.tar.gz', '.tar.bz2', '.tar.xz', '.tar.zst', '.tar'];
-      const ext = real.find((x) => EXT_TOKENS.includes(x.toLowerCase()));
-      const src = real.filter((x) => x !== ext);
-      setCompress({ sources: src, format: ext ? extToFormat(ext) : undefined });
+      /* ISS-11:格式 token 走 shared 协议表(shell 命令面/主进程/渲染层单一真相);
+         未识别的显式格式请求明确报错且不执行任何操作,禁止静默回退默认格式 */
+      if (p.token !== undefined) {
+        const f = tokenToFormat(p.token);
+        if (!f) {
+          toast(`无法识别的压缩格式请求「${p.token}」:未执行任何操作。请在 设置→右键菜单 重新注册后重试。`, 'err');
+          return;
+        }
+        setCompress({ sources: real, format: f });
+      } else {
+        setCompress({ sources: real });
+      }
     }
-  }, [openInTab, quickExtract, dblAction]);
+  }, [openInTab, quickExtract, dblAction, toast]);
 
   useEffect(() => {
     void (async () => {
@@ -761,18 +769,6 @@ function TabView({ tab, active, host, sbHidden, query, onQuery }: {
   }
 
   return <Browser info={info} archive={archive} query={query} onSearch={setQuery} actions={actions} nav={nav} sidebarHidden={sbHidden} shellOpened={!!tab.shellOpened} />;
-}
-
-function extToFormat(ext: string): ArchiveFormat {
-  switch (ext) {
-    case '.zip': return 'zip';
-    case '.tar': return 'tar';
-    case '.gz': case '.tgz': return 'tar.gz';
-    case '.bz2': return 'tar.bz2';
-    case '.xz': case '.txz': return 'tar.xz';
-    case '.zst': return 'tar.zst';
-    default: return '7z';
-  }
 }
 
 export default function App() {

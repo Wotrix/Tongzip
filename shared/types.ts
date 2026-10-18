@@ -400,6 +400,33 @@ export interface Settings {
 export interface LaunchPayload {
   kind: 'archive' | 'compress';
   paths: string[];
+  /** kind=compress 专属:--compress-as 菜单命令的显式格式 token(如 ".tar.gz")。
+   *  ISS-11:协议单一入口,由主进程 parseArgv 提取、渲染层经 tokenToFormat 解析;
+   *  无法识别的显式请求必须明确报错,禁止静默回退默认格式 */
+  token?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* 压缩格式 token 协议(ISS-11)— shell.ts 注册命令 / main.parseArgv /   */
+/* App.handlePayload 三方共用单一数据源,防止词表再次漂移               */
+/* ------------------------------------------------------------------ */
+
+const TOKEN_FORMAT: Record<string, ArchiveFormat> = {
+  '.7z': '7z',
+  '.zip': 'zip',
+  '.tar': 'tar',
+  '.tar.gz': 'tar.gz', '.tgz': 'tar.gz', '.gz': 'tar.gz',
+  '.tar.bz2': 'tar.bz2', '.tbz2': 'tar.bz2', '.bz2': 'tar.bz2',
+  '.tar.xz': 'tar.xz', '.txz': 'tar.xz', '.xz': 'tar.xz',
+  '.tar.zst': 'tar.zst', '.zst': 'tar.zst',
+};
+
+/** --compress-as 命令行可携带的全部格式 token(带点小写) */
+export const COMPRESS_TOKENS: readonly string[] = Object.keys(TOKEN_FORMAT);
+
+/** 格式 token → ArchiveFormat;未知 token 返回 null(调用方必须显式处理,不得 default) */
+export function tokenToFormat(token: string): ArchiveFormat | null {
+  return TOKEN_FORMAT[token.toLowerCase()] ?? null;
 }
 
 /** IPC 通道名 */
