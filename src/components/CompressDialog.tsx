@@ -5,10 +5,12 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ArchiveFormat, CompressJob } from '@shared/types';
+import { isCreatableFormat, ZIP_PW_OK } from '@shared/types';
 import { Modal, useToast, useModalClose } from './ui';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { IconArchive, IconAdd, IconChevronDown, IconClose, IconFolder, IconWarn } from './icons';
 import { FORMAT_EXT, SAVE_FILTERS, basename, parentDir } from '../lib/format';
+import { cn } from '@/lib/utils';
 import type { AppApi } from '../App';
 
 const FORMATS: { v: ArchiveFormat; label: string; hint: string }[] = [
@@ -54,7 +56,15 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
     ? (/\.zip$/i.test(appendTo) ? 'zip' : /\.7z$/i.test(appendTo) ? '7z' : null)
     : null;
   const [items, setItems] = useState<string[]>(sources);
-  const [format, setFormat] = useState<ArchiveFormat>(appendFormat ?? presetFormat ?? '7z');
+  /* ISS-02:预设格式(如 shell 传入 tar.zst)不在引擎能力表内时回退 7Z 并明示原因,不静默 */
+  const [fmtNote] = useState<string | null>(() => (
+    presetFormat && !appendFormat && !isCreatableFormat(presetFormat)
+      ? `当前内置引擎不支持创建 ${presetFormat.toUpperCase()} 格式，已自动回退为 7Z。` : null
+  ));
+  const [format, setFormat] = useState<ArchiveFormat>(() => {
+    const f = appendFormat ?? presetFormat ?? '7z';
+    return isCreatableFormat(f) ? f : '7z';
+  });
   const [level, setLevel] = useState(5);
   const [password, setPassword] = useState('');
   const [encOn, setEncOn] = useState(false);
@@ -129,6 +139,12 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
     if (!items.length) { toast('请先添加要压缩的文件或文件夹。', 'err'); return; }
     if (!output) { toast('请填写压缩包名称与保存位置。', 'err'); return; }
     if (!volumeOk) { toast('分卷大小格式应为 数字+单位,如 700m。', 'err'); return; }
+    /* ISS-02 提交前预检:与主进程 preflightCompress 同源判据(ZIP_PW_OK/能力表),UI 先把原因说清楚 */
+    if (!isCreatableFormat(format)) { toast(`当前内置引擎不支持创建 ${format.toUpperCase()} 格式，请改用 7Z/ZIP/TAR 族。`, 'err'); return; }
+    if (canEnc && encOn && password && format === 'zip' && !ZIP_PW_OK.test(password)) {
+      toast('ZIP 密码仅支持 ASCII 可打印字符(中文会导致引擎失败)。请改用 ASCII 密码，或切换为 7Z 格式。', 'err');
+      return;
+    }
     setBusy(true);
     const usePw = canEnc && (encOn || password);
     const job: CompressJob = {
@@ -223,6 +239,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{FORMATS.map((f) => <SelectItem key={f.v} value={f.v}>{f.label} — {f.hint}</SelectItem>)}</SelectContent>
               </Select>
+              {fmtNote && <div className="note pre-note"><IconWarn /><span>{fmtNote}</span></div>}
             </div>
           </div>
         )}
@@ -276,8 +293,18 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
               添加密码
             </label>
             {encOn && (
-              <input className="input" type="password" autoFocus placeholder="输入密码" value={password}
-                onChange={(e) => setPassword(e.target.value)} />
+              <>
+                <input className="input" type="password" autoFocus placeholder="输入密码" value={password}
+                  onChange={(e) => setPassword(e.target.value)} />
+                {/* ISS-02:ZIP 口令字符集行内提示,输入时即时变色,不等提交/引擎报错 */}
+                {format === 'zip' && (
+                  <div className={cn('note', password && !ZIP_PW_OK.test(password) && 'pre-note')}>
+                    {password && !ZIP_PW_OK.test(password)
+                      ? <><IconWarn /><span>检测到非 ASCII 字符:ZIP 传统加密仅支持 ASCII 可打印字符密码，请修改或改用 7Z 格式。</span></>
+                      : <span>ZIP 密码仅支持 ASCII 可打印字符;需要中文密码请改用 7Z。</span>}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

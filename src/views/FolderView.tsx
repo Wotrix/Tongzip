@@ -54,11 +54,14 @@ const typeOf = (e: FolderEntry) => {
   return m ? `${m[1].toUpperCase()} 文件` : '文件';
 };
 
-export default function FolderView({ dir, standalone = false, onOpenArchive, onCompress }: {
+export default function FolderView({ dir, standalone = false, query: qProp, onQuery, onOpenArchive, onCompress }: {
   /** 初始目录(独立窗口来自 URL query;标签模式来自 tab.dir) */
   dir: string;
   /** 独立浏览窗口:渲染迷你标题栏 + 窗控 */
   standalone?: boolean;
+  /** 受控搜索词(标签模式下由 Shell tabQueries 提供,与胶囊标签条搜索框共用) */
+  query?: string;
+  onQuery?(v: string): void;
   /** 双击压缩包条目:主窗开新标签;独立窗口默认走 openPath */
   onOpenArchive?: (archivePath: string) => void;
   /** 拉起压缩对话框(添加进包/压缩选中) */
@@ -71,7 +74,10 @@ export default function FolderView({ dir, standalone = false, onOpenArchive, onC
   const [loading, setLoading] = useState(true);
   const [hist, setHist] = useState<string[]>([norm(dir)]);
   const [hi, setHi] = useState(0);
-  const [query, setQuery] = useState('');
+  /* 搜索词:传入 query 则受控(标签模式),否则自持(独立窗口) */
+  const [ownQuery, setOwnQuery] = useState('');
+  const query = qProp ?? ownQuery;
+  const setQuery = (v: string) => { if (onQuery) onQuery(v); else setOwnQuery(v); };
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [asc, setAsc] = useState(true);

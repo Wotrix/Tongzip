@@ -69,7 +69,7 @@ const TREE_MAX = 560;
 const TREE_RAIL_W = 36;
 const TREE_PULL_BACK = 96;
 
-export default function Browser({ info, archive, query, onSearch, actions, nav, sidebarHidden }: {
+export default function Browser({ info, archive, query, onSearch, actions, nav, sidebarHidden, shellOpened }: {
   info: ArchiveInfo;
   archive: string;
   query: string;
@@ -77,6 +77,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   actions: BrowserActions;
   nav: NavState;
   sidebarHidden: boolean;
+  /** 双击/资源管理器打开:目录树初始收起为竖条(仅本标签初始态,不写持久设置) */
+  shellOpened: boolean;
 }) {
   const prefix = nav.prefix;
 
@@ -89,8 +91,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
   const [extractMenu, setExtractMenu] = useState<{ x: number; y: number } | null>(null);
   const [panelMenu, setPanelMenu] = useState<{ x: number; y: number } | null>(null);
   const [showDetails, setShowDetails] = useState(true);
-  /* 目录树:full=200px 面板 / rail=36px 图标窄条 */
-  const [treeMode, setTreeMode] = useState<'full' | 'rail'>('full');
+  /* 目录树:full=200px 面板 / rail=36px 图标窄条;shell 打开的标签默认从竖条起步 */
+  const [treeMode, setTreeMode] = useState<'full' | 'rail'>(shellOpened ? 'rail' : 'full');
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']));
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [treeMenu, setTreeMenu] = useState<{ x: number; y: number; node: TreeDir } | null>(null);
@@ -114,7 +116,8 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
       if (typeof s.treeWidth === 'number') setTreeW(Math.min(TREE_MAX, Math.max(TREE_COLLAPSE, Math.round(s.treeWidth)) || TREE_DEFAULT));
       /* 面板形态跨会话记忆:详情面板开关、目录树是否收起为竖条(旧设置无此两键时保持默认 开/完整) */
       if (typeof s.browseDetails === 'boolean') setShowDetails(s.browseDetails);
-      if (s.browseTreeRail) setTreeMode('rail');
+      /* shell 打开的标签强制竖条起步,覆盖持久读回;用户之后手动展开走 setTreeRail 写设置,不受影响 */
+      if (s.browseTreeRail || shellOpened) setTreeMode('rail');
       await loadColWidths(setCols);
       setHidden(new Set(await loadHiddenCols()));
     })();

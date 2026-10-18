@@ -41,8 +41,9 @@ interface Ctx { archive: string; info: ArchiveInfo }
 /** 提示条内小按钮(旧 .tbtn.sm:27px / 9px 内边距 / 12px 字) */
 const SB_BTN = 'h-[27px] gap-[7px] rounded-md px-[9px] text-xs font-normal shadow-none [&_svg]:size-[15px]';
 
-/** 浏览标签:压缩包标签持有 archive/info;文件夹标签(dir)复用同一套标签栏与 TabView 分流 */
-interface Tab extends Ctx { id: string; dir?: string }
+/** 浏览标签:压缩包标签持有 archive/info;文件夹标签(dir)复用同一套标签栏与 TabView 分流;
+ * shellOpened=双击/资源管理器「打开方式」进入 → 目录树默认收起为竖条(不写设置,不影响软件内打开) */
+interface Tab extends Ctx { id: string; dir?: string; shellOpened?: boolean }
 
 /** Shell 注入给 TabView 的全局能力(对话框/任务/密码复用) */
 interface HostApi {
@@ -82,6 +83,9 @@ function Shell() {
   const [conflict, setConflict] = useState<{ archive: string; intoSameDir: boolean; entries: string[]; totalBytes?: number; count: number } | null>(null);
   const [engineWarn, setEngineWarn] = useState<string | null>(null);
   const [recents, setRecents] = useState<string[]>([]);
+  /* 各浏览标签的搜索词(提升到 Shell:胶囊标签条常驻搜索框与页内搜索框共用同一状态) */
+  const [tabQueries, setTabQueries] = useState<Record<string, string>>({});
+  const setTabQuery = useCallback((id: string, v: string) => setTabQueries((q) => ({ ...q, [id]: v })), []);
   const [glow, setGlow] = useState(false);
   const dragDepth = useRef(0);
   const pwCache = useRef(new Map<string, string>());
@@ -211,9 +215,9 @@ function Shell() {
   }), [toast]);
 
   /* ---------- 打开压缩包:已开则切换,否则新标签(含密码重试) ---------- */
-  const createTab = useCallback((archive: string, info: ArchiveInfo) => {
+  const createTab = useCallback((archive: string, info: ArchiveInfo, shellOpened = false) => {
     const id = `tab-${++tabSeq.current}`;
-    setTabs((ts) => [...ts, { id, archive, info }]);
+    setTabs((ts) => [...ts, { id, archive, info, shellOpened }]);
     setActiveId(id);
     setView('browse');
   }, []);
@@ -224,17 +228,22 @@ function Shell() {
     setTabs(next);
     /* 关标签即撤密:该包缓存密码随视图销毁失效(rememberPassword 开启也只服务打开中的包) */
     if (idx >= 0) pwCache.current.delete(tabs[idx].archive);
+    setTabQueries((q) => { const n = { ...q }; for (const t of tabs) if (!next.includes(t)) delete n[t.id]; return n; });
     if (!next.length) { setActiveId(null); setView('home'); }
     else if (id === activeId) setActiveId(next[Math.min(idx, next.length - 1)].id);
   }, [tabs, activeId]);
 
-  const openInTab = useCallback(async (archiveRaw: string, password?: string): Promise<void> => {
+  const openInTab = useCallback(async (archiveRaw: string, password?: string, shellOpened = false): Promise<void> => {
     const archive = archiveRaw.replace(/\\/g, '/');
     const found = tabs.find((t) => t.archive === archive);
-    if (found) { setActiveId(found.id); setView('browse'); return; }
+    if (found) {
+      /* shell 打开已开着的包时同样补收起目录树,两次进入形态一致 */
+      if (shellOpened) setTabs((ts) => ts.map((t) => (t.id === found.id ? { ...t, shellOpened: true } : t)));
+      setActiveId(found.id); setView('browse'); return;
+    }
     const r = await window.tz.listArchive(archive, password);
     if (r.ok) {
-      createTab(archive, r.data);
+      createTab(archive, r.data, shellOpened);
       pushRecent(archive);
       if (password) api.cachePassword(archive, password);
       return;
@@ -248,7 +257,7 @@ function Shell() {
           api.cachePassword(archive, p);
           return true;
         }
-        setPw((s) => (s ? { ...s, error: '密码不正确,请重试。' } : s));
+        setPw((s) => (s ? { ...s, error: rr.code === ERR.BAD_PARAM ? rr.message : '密码不正确,请重试。' } : s));
         return false;
       });
       return;
@@ -320,7 +329,7 @@ function Shell() {
         /* 兑现设置项 dblClickAction:资源管理器双击/打开方式进入此分支,按用户选择路由 */
         if (dblAction === 'quickExtract') void quickExtract(archive);
         else if (dblAction === 'extractDialog') setExtract({ archive, entries: [] });
-        else void openInTab(archive);
+        else void openInTab(archive, undefined, true);
       }
     } else {
       const EXT_TOKENS = ['.7z', '.zip', '.tar.gz', '.tar.bz2', '.tar.xz', '.tar.zst', '.tar'];
@@ -460,7 +469,12 @@ function Shell() {
         /* 搜索只在打开压缩包后可用;其他页面不响应 */
         if (view === 'browse') {
           e.preventDefault();
-          setTimeout(() => document.querySelector<HTMLInputElement>('.tab-slot:not([hidden]) .tb-search input')?.focus(), 60);
+          /* 文件夹标签:聚焦页内搜索框;压缩包标签:聚焦标签条常驻搜索框 */
+          const folderTab = activeId ? tabs.find((t) => t.id === activeId)?.dir : undefined;
+          setTimeout(() => {
+            if (folderTab) document.querySelector<HTMLInputElement>('.tab-slot:not([hidden]) .tb-search input')?.focus();
+            else { const el = document.getElementById('tz-tab-search') as HTMLInputElement | null; el?.focus(); el?.select(); }
+          }, 60);
         }
       }
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleSidebar(); }
@@ -487,6 +501,12 @@ function Shell() {
   };
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+  /* 切换活动标签时清空新标签搜索词:标签条常驻搜索框始终只服务当前标签,不残留旧词 */
+  const lastActRef = useRef<string | null>(activeId);
+  useEffect(() => {
+    if (activeId && activeId !== lastActRef.current) setTabQueries((q) => ({ ...q, [activeId]: '' }));
+    lastActRef.current = activeId;
+  }, [activeId]);
   const runningCount = hub.jobs.filter((j) => j.status === 'running').length;
 
   return (
@@ -519,7 +539,8 @@ function Shell() {
         <div className="content-panel">
         {view === 'browse' && tabs.length > 0 ? (
           <>
-            <TabBar tabs={tabs} activeId={activeId}
+            <TabBar tabs={tabs} activeId={activeId} query={activeId ? tabQueries[activeId] ?? '' : ''}
+              onSearch={(v) => { if (activeId) setTabQuery(activeId, v); }}
               onSelect={(id) => setActiveId(id)}
               onClose={(id) => closeTab(id)}
               onNew={() => void pickAndOpen()}
@@ -527,7 +548,8 @@ function Shell() {
             <div className="tabs-stage">
               {tabs.map((t) => (
                 <div key={t.id} className="tab-slot" hidden={t.id !== activeId}>
-                  <TabView tab={t} active={t.id === activeId} host={host} sbHidden={(sbHidden && view === 'browse') || sbCollapsed} />
+                  <TabView tab={t} active={t.id === activeId} host={host} sbHidden={(sbHidden && view === 'browse') || sbCollapsed}
+                    query={tabQueries[t.id] ?? ''} onQuery={(v) => setTabQuery(t.id, v)} />
                 </div>
               ))}
             </div>
@@ -618,14 +640,17 @@ function Shell() {
 }
 
 /**
- * 浏览标签实例 — 自持一个压缩包的 info/导航历史/搜索词;
+ * 浏览标签实例 — 自持一个压缩包的 info/导航历史;
+ * 搜索词提升至 Shell(tabQueries)供标签条搜索框共用;
  * 隐藏标签不卸载,选中态/预览/滚动位置等切换后原样保留。
  */
-function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; host: HostApi; sbHidden: boolean }) {
+function TabView({ tab, active, host, sbHidden, query, onQuery }: {
+  tab: Tab; active: boolean; host: HostApi; sbHidden: boolean; query: string; onQuery(v: string): void;
+}) {
   const [info, setInfo] = useState<ArchiveInfo>(tab.info);
   const [hist, setHist] = useState<string[]>(['']);
   const [hi, setHi] = useState(0);
-  const [query, setQuery] = useState('');
+  const setQuery = onQuery;
   const { toast, hub } = host;
   const archive = tab.archive;
   /* 重命名后 tab.archive 会变:路径变化时自刷新(列表/历史/搜索回到初始态) */
@@ -730,12 +755,12 @@ function TabView({ tab, active, host, sbHidden }: { tab: Tab; active: boolean; h
 
   /* 文件夹标签分流:TabView 钩子已全部执行,此处早退安全 */
   if (tab.dir) {
-    return <FolderView dir={tab.dir}
+    return <FolderView dir={tab.dir} query={query} onQuery={onQuery}
       onOpenArchive={(p) => void host.openInTab(p)}
       onCompress={(sources) => host.openCompress({ sources })} />;
   }
 
-  return <Browser info={info} archive={archive} query={query} onSearch={setQuery} actions={actions} nav={nav} sidebarHidden={sbHidden} />;
+  return <Browser info={info} archive={archive} query={query} onSearch={setQuery} actions={actions} nav={nav} sidebarHidden={sbHidden} shellOpened={!!tab.shellOpened} />;
 }
 
 function extToFormat(ext: string): ArchiveFormat {

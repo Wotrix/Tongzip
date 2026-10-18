@@ -23,7 +23,7 @@ import type {
   JobKind,
   ProgressEvent,
 } from '../shared/types';
-import { DEFAULT_GUARD, ERR, isArchiveExt } from '../shared/types';
+import { DEFAULT_GUARD, ERR, isArchiveExt, isCreatableFormat, ZIP_PW_OK } from '../shared/types';
 
 /* ------------------------------------------------------------------ */
 /* 引擎定位                                                            */
@@ -281,9 +281,18 @@ function interpretFailure(code: number, stdout: string): { message: string; need
     return { message: '存在错误:部分文件处理失败,详见日志。', needsPassword: false };
   }
   if (code === 1) return { message: '完成,但存在警告(部分文件被跳过)。', needsPassword: false };
+  /* 引擎把参数不合法(如 ZIP 口令字符集越界)报成裸「System ERROR: 参数错误」:
+     提前分类给出原因与出路,不再落入下方透传(ISS-02);预检已拦 UI 路径,此处服务直连 IPC/漏网参数 */
+  if (stdout.includes('System ERROR') && /参数错误|cannot parse the command line|wrong param/i.test(stdout)) {
+    return {
+      message: '引擎拒绝了当前参数(常见原因:ZIP 密码含中文等非 ASCII 字符,或格式与参数不匹配)。'
+        + '请改用 ASCII 密码或 7Z 格式后重试;若参数无误,请检查源文件与磁盘状态。',
+      needsPassword: false,
+    };
+  }
   /* 兜底也附上引擎输出末几行,避免只报裸退出码 */
   const detail = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(-2).join(' / ');
-  return { message: `引擎返回错误 (code ${code})${detail ? `: ${detail.slice(0, 160)}` : ''}`, needsPassword: false };
+  return { message: `引擎执行失败 (code ${code})${detail ? `:${detail.slice(0, 160)}` : ''}。完整原因见任务日志。`, needsPassword: false };
 }
 
 /* ------------------------------------------------------------------ */
@@ -910,6 +919,34 @@ export function inferFormat(output: string): ArchiveFormat {
   if (n.endsWith('.tar')) return 'tar';
   if (n.endsWith('.zip')) return 'zip';
   return '7z';
+}
+
+/* ------------------------------------------------------------------ */
+/* 启动前参数预检(ISS-02)——格式能力表 + 密码字符集(定义在 shared/types 单一真相)  */
+/* ------------------------------------------------------------------ */
+
+/** ZIP 包密码入口统一拦截(创建/打开/解压/追加):非 ASCII 口令提前给出原因,
+ * 不再让引擎裸报「参数错误」(ISS-02)。仅限 zip——7z 非 ASCII 密码实测可用,不得误拦。 */
+export function assertZipPw(archive: string, pw: string | undefined): void {
+  if (/\.zip$/i.test(archive) && pw && !ZIP_PW_OK.test(pw)) {
+    throw new EngineError(ERR.BAD_PARAM, 'ZIP 传统加密仅支持 ASCII 可打印字符密码(中文等字符会导致引擎失败)。若该包实为 7Z 等其他格式请重命名扩展名;需要中文密码请改用 7Z 格式创建。');
+  }
+}
+
+/** 压缩任务启动前预检:不支持的创建格式/密码字符集直接给出原因与出路;tar 族拒收密码字段(ISS-01 纵深加固) */
+export function preflightCompress(job: CompressJob): void {
+  const fmt = job.format ?? inferFormat(job.output);
+  if (!isCreatableFormat(fmt)) {
+    throw new EngineError(ERR.BAD_PARAM, `当前内置引擎(7-Zip 21.07 独立版)不支持创建 ${fmt.toUpperCase()} 格式,请改用 7Z/ZIP/TAR.GZ/TAR.XZ/TAR.BZ2,或安装完整版 7-Zip 后在设置中指定其路径。`);
+  }
+  if (job.password) {
+    if (fmt === 'zip' && !ZIP_PW_OK.test(job.password)) {
+      throw new EngineError(ERR.BAD_PARAM, 'ZIP 传统加密仅支持 ASCII 可打印字符密码(中文等字符会导致引擎失败)。请改用 ASCII 密码,或切换为 7Z 格式(支持任意字符并可加密文件名)。');
+    }
+    if (fmt !== 'zip' && fmt !== '7z') {
+      throw new EngineError(ERR.BAD_PARAM, `${fmt} 格式本身不支持加密,密码不会有任何效果。需要加密请改用 7Z 或 ZIP 格式。`);
+    }
+  }
 }
 
 const COMPOUND: Record<string, string> = {

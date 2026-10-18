@@ -16,7 +16,7 @@ import type {
 import { ERR, isArchiveExt } from '../shared/types';
 import {
   EngineError, cancelTask, configureGuard, configureTxnJournal, defaultOutputFor, detectEngine, extractConflicts, extractSingleToTemp,
-  inferFormat, isArchivePath, listArchive, pauseTask, previewEntry, quickExtractDest, recoverStaleTransactions,
+  inferFormat, isArchivePath, listArchive, pauseTask, preflightCompress, assertZipPw, previewEntry, quickExtractDest, recoverStaleTransactions,
   runCompress, runDelete, runExtract, runTest, totalSize,
 } from './engine';
 import {
@@ -421,14 +421,19 @@ function ghLatestRelease(): Promise<{ tag: string; url: string } | null> {
 
 function installIpc(): void {
   ipcMain.handle('tz:engine-detect', wrap(() => detectEngine(store.get('enginePath') as string | null)));
-  ipcMain.handle('tz:archive-list', wrap((a: { archive: string; password?: string }) => listArchive(a.archive, a.password)));
+  ipcMain.handle('tz:archive-list', wrap((a: { archive: string; password?: string }) => {
+    assertZipPw(a.archive, a.password); // ISS-02:ZIP 非 ASCII 口令提前定性,不透传引擎裸错
+    return listArchive(a.archive, a.password);
+  }));
   ipcMain.handle('tz:compress', wrap(async (job: CompressJob) => {
     if (!job.output) throw new EngineError(ERR.NO_OUTPUT, '缺少输出路径。');
+    preflightCompress(job); // ISS-02:不支持格式/密码字符集在启动引擎前明确拒绝
     const r = runCompress(job, send);
     /* taskId 由引擎内部先生成后同步登记:runCompress 同步阶段即 tasks.set,invoke 返回时已可查 */
     return r;
   }));
   ipcMain.handle('tz:extract', wrap(async (job: ExtractJob): Promise<ExtractStart> => {
+    assertZipPw(job.archive, job.password); // ISS-02
     /* 询问模式预检:目标已有同名文件时不启动任务,返回冲突清单由渲染层让用户决策(否则等于静默覆盖) */
     if (job.overwrite === 'ask') {
       const conflicts = await extractConflicts(job);
@@ -447,9 +452,14 @@ function installIpc(): void {
     };
     return runExtract(job, wrapSend);
   }));
-  ipcMain.handle('tz:test', wrap((a: { archive: string; password?: string }) => runTest(a.archive, a.password, send)));
-  ipcMain.handle('tz:delete-entries', wrap((a: { archive: string; entries: string[]; password?: string }) =>
-    runDelete(a.archive, a.entries, send, a.password)));
+  ipcMain.handle('tz:test', wrap((a: { archive: string; password?: string }) => {
+    assertZipPw(a.archive, a.password);
+    return runTest(a.archive, a.password, send);
+  }));
+  ipcMain.handle('tz:delete-entries', wrap((a: { archive: string; entries: string[]; password?: string }) => {
+    assertZipPw(a.archive, a.password);
+    return runDelete(a.archive, a.entries, send, a.password);
+  }));
   /* 重命名磁盘上的压缩包文件:保留原扩展名,校验合法名与目标冲突,成功后返回新路径 */
   ipcMain.handle('tz:archive-rename', wrap(({ archive, newName }: { archive: string; newName: string }) => {
     const name = newName.trim();
@@ -466,11 +476,15 @@ function installIpc(): void {
   }));
   ipcMain.handle('tz:task-cancel', wrap((taskId: string) => cancelTask(taskId)));
   ipcMain.handle('tz:task-pause', wrap((taskId: string) => pauseTask(taskId)));
-  ipcMain.handle('tz:preview-entry', wrap((a: { archive: string; entry: string; password?: string }) =>
-    previewEntry(a.archive, a.entry, a.password)));
+  ipcMain.handle('tz:preview-entry', wrap((a: { archive: string; entry: string; password?: string }) => {
+    assertZipPw(a.archive, a.password);
+    return previewEntry(a.archive, a.entry, a.password);
+  }));
   ipcMain.handle('tz:total-size', wrap((paths: string[]) => totalSize(paths)));
-  ipcMain.handle('tz:extract-single', wrap((a: { archive: string; entry: string; password?: string }) =>
-    extractSingleToTemp(a.archive, a.entry, a.password)));
+  ipcMain.handle('tz:extract-single', wrap((a: { archive: string; entry: string; password?: string }) => {
+    assertZipPw(a.archive, a.password);
+    return extractSingleToTemp(a.archive, a.entry, a.password);
+  }));
 
   /* 拖拽压缩包内条目到窗口外:先解到临时目录,再启动系统文件拖拽 */
   ipcMain.handle('tz:drag-entry', wrap(async (a: { archive: string; entry: string; password?: string }) => {
@@ -661,7 +675,20 @@ function gcTempDir(): void {
   }
 }
 
-if (!app.requestSingleInstanceLock()) {
+/* 卸载清理(无头):NSIS 卸载器删文件前调用 `TongZip.exe --uninstall-shell`,仅撤销
+ * TongZip 自写的 HKCU 注册项(shell 菜单/ProgID/DefaultIcon/默认应用登记),绝不触碰
+ * UserChoice。RC-14 实测:不此举则卸载后残留数十个指向已删 exe 的死链(ISS-03)。
+ * 独立实例改用临时 userData,避免与仍在运行的 GUI 抢 Chromium profile 锁。*/
+if (isWin && process.argv.includes('--uninstall-shell')) {
+  app.setPath('userData', path.join(os.tmpdir(), `tz-shell-cleanup-${process.pid}`));
+  void app.whenReady().then(async () => {
+    await Promise.race([
+      uninstallShell().catch(() => undefined),
+      new Promise((r) => setTimeout(r, 30_000)), // 兜底:任何 reg 卡点都不许吊死卸载器
+    ]);
+    app.exit(0);
+  });
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {

@@ -8,13 +8,14 @@ import {
   runDelete, configureTxnJournal, stageForModify, verifyArchiveArtifact, abortTxn,
   recoverStaleTransactions, checkFreeSpace,
   configureGuard, guardStats, extractSingleToTemp,
+  preflightCompress, assertZipPw,
 } from '../electron/engine';
 import {
   applyRestoreRules, clearTaskHistory, configureTaskHistory, flushTaskHistory, getTaskHistory,
   loadTaskHistory, observeTaskEvent, parseHistoryText,
 } from '../electron/history';
-import type { CompressJob, ExtractJob, PersistedTask, ProgressEvent } from '../shared/types';
-import { ERR } from '../shared/types';
+import type { ArchiveFormat, CompressJob, ExtractJob, PersistedTask, ProgressEvent } from '../shared/types';
+import { ERR, ZIP_PW_OK } from '../shared/types';
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) { console.error('FAIL:', msg); process.exit(1); }
@@ -445,6 +446,62 @@ function assert(cond: unknown, msg: string): asserts cond {
   // PW5 加密包单文件提取(预览/拖拽链路)带密码可用
   const local5 = await extractSingleToTemp(mhePw, 'pwsrc.txt', PW);
   assert(fs.readFileSync(local5, 'utf8') === 'password-safe-roundtrip', 'PW5 加密包单文件提取成功');
+
+  /* ============ 阶段 4 ISS-02 回归:启动前预检 + 错误分类(IP = IPreflight) ============ */
+  const ipErr = (fn: () => void): { code: string; msg: string } => {
+    try { fn(); return { code: '', msg: '' }; } catch (e) {
+      const x = e as { code?: string; message?: string };
+      return { code: x.code ?? '', msg: x.message ?? '' };
+    }
+  };
+  const baseJob = { sources: [pwSrc], level: 1, dict: '', solid: 'auto' as const, multiThread: false };
+  // IP1 预检单测:不支持格式/zip 非 ASCII 密码/tar 族带密 → BAD_PARAM;zip ASCII/7z 中文 → 放行
+  assert(ipErr(() => preflightCompress({ ...baseJob, output: 'x.tar.zst', format: 'tar.zst' } as CompressJob)).code === ERR.BAD_PARAM,
+    'IP1a tar.zst 引擎不支持创建→预检 BAD_PARAM(不透传引擎裸错)');
+  assert(ipErr(() => preflightCompress({ ...baseJob, output: 'x.zip', format: 'zip', password: '中文密码' } as CompressJob)).code === ERR.BAD_PARAM,
+    'IP1b zip 非 ASCII 密码→预检 BAD_PARAM');
+  assert(ipErr(() => preflightCompress({ ...baseJob, output: 'x.tar', format: 'tar', password: 'ascii-pw' } as CompressJob)).code === ERR.BAD_PARAM,
+    'IP1c tar 族带密码字段→拒绝(ISS-01 纵深:不静默无效)');
+  assert(ipErr(() => preflightCompress({ ...baseJob, output: 'x.zip', format: 'zip', password: 'Ok-9#p' } as CompressJob)).code === '',
+    'IP1d zip ASCII 密码放行(支持格式不被误拒)');
+  assert(ipErr(() => preflightCompress({ ...baseJob, output: 'x.7z', format: '7z', password: '中文密码' } as CompressJob)).code === '',
+    'IP1e 7z 中文密码放行(PW 系列实测可用,不得误拦)');
+  // IP2 assertZipPw:仅 zip 拦截非 ASCII;7z 同名密码放行
+  assert(ipErr(() => assertZipPw('a.zip', '中文')).code === ERR.BAD_PARAM && ipErr(() => assertZipPw('a.7z', '中文')).code === ''
+    && ipErr(() => assertZipPw('a.zip', 'ascii')).code === '', 'IP2 assertZipPw 只对 zip 生效且不误拦');
+  assert(ZIP_PW_OK.test('') && ZIP_PW_OK.test('aA0 #~') && !ZIP_PW_OK.test('中') && !ZIP_PW_OK.test('a\tb') && !ZIP_PW_OK.test('a\n'),
+    'IP3 ZIP_PW_OK 边界:空/可打印 ASCII 过,中文/制表/换行拒');
+  // IP4 真实引擎 roundtrip:zip+ASCII 密码创建成功,正确密码可读,错误密码 NEED_PASSWORD
+  const ipZip = path.join(root, 'ip-ascii.zip');
+  let ipDone = false; let ipErr2 = '';
+  await runCompress({ sources: [pwSrc], output: ipZip, format: 'zip', level: 1, dict: '16m', solid: 'auto', multiThread: false, password: 'Ascii#9pw' },
+    (ev2) => { if (ev2.status === 'done') ipDone = true; if (ev2.status === 'error') ipErr2 = ev2.message ?? ''; });
+  for (let i = 0; i < 200 && !ipDone && !ipErr2; i++) await new Promise((r) => setTimeout(r, 50));
+  assert(ipDone && !ipErr2 && fs.existsSync(ipZip), `IP4a zip+ASCII 密码真实创建成功(${ipErr2})`);
+  const ipInfo = await listArchive(ipZip, 'Ascii#9pw');
+  assert(ipInfo.entries.some((en) => en.name === 'pwsrc.txt'), 'IP4b 正确密码可读');
+  /* 错密判据在解压链:zip 中央目录不加密,列表环节无从发现错密(非 ASCII 拦截由 IP1b/IP2 服务) */
+  const rIpBad = await extractTo(ipZip, path.join(root, 'ipwrong'), { password: 'WrongPw42' });
+  assert(rIpBad.code === ERR.NEED_PASSWORD, `IP4c 错误密码解压→NEED_PASSWORD 机读码 (code=${rIpBad.code})`);
+  // IP5 诚实性兜底:绕过预检直连引擎时,失败须无半成品且 message 可读(透传也带原因,非裸退出码)
+  const ipZst = path.join(root, 'ip-blocked.tar.zst');
+  let ip5Code = ''; let ip5Msg = '';
+  await runCompress({ sources: [pwSrc], output: ipZst, format: 'tar.zst' as ArchiveFormat, level: 1, dict: '', solid: 'auto', multiThread: false },
+    (ev2) => { if (ev2.status === 'error') { ip5Code = ev2.code ?? ''; ip5Msg = ev2.message ?? ''; } });
+  for (let i = 0; i < 200 && !ip5Code && !fs.existsSync(ipZst); i++) await new Promise((r) => setTimeout(r, 50));
+  assert(!fs.existsSync(ipZst) && ip5Msg.length > 0 && !/^引擎执行失败 \(code \d+\)$/.test(ip5Msg),
+    `IP5 tar.zst 绕过预检直连引擎:无半成品且失败 message 带原因 (${ip5Msg.slice(0, 60)})`);
+
+  /* ============ RC-14 挖出缺陷回归:reg delete /ve 必带 /f(静态护栏,不触注册表) ============ */
+  // 根因:reg.exe 删"有子键+非空默认值"的键的 /ve 时无 /f 会弹交互确认,管道 stdio 下永久挂起,
+  //       卡死 uninstallShell→installShell 整条链(RC-14 实测打包产物首次 shellInstall 卡死)。
+  // 护栏:静态扫描 shell.ts,任何 delete 调用只要出现 '/ve' 就必须同带 '/f'(query /ve 不受此约束)。
+  const shellSrc = fs.readFileSync(path.resolve(__dirname, '../electron/shell.ts'), 'utf8');
+  const deleteCalls = shellSrc.match(/(?:reg|regQuiet)\(\s*'delete'[^)]*\)/g) ?? [];
+  const veDeletes = deleteCalls.filter((c) => c.includes("'/ve'"));
+  const veWithoutF = veDeletes.filter((c) => !c.includes("'/f'"));
+  assert(veDeletes.length > 0, `SC1 shell.ts 存在 '/ve' 删除调用(护栏有效域非空,共 ${veDeletes.length} 处)`);
+  assert(veWithoutF.length === 0, `SC1 所有 '/ve' 删除均带 '/f'(违规 ${veWithoutF.length} 处: ${veWithoutF.map((c) => c.slice(0, 60)).join(' | ')})`);
 
   /* ============ 阶段 3.4:任务历史持久化与重启恢复(T 系列) ============ */
   const histFile = path.join(root, 'tongzip-history.json');

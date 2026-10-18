@@ -1,19 +1,22 @@
 /**
- * 多标签栏 — 白底标签条;活动标签 = 页面白 + 细描边轻影的「凸起纸片」感,非活动标签浅灰
- * (用户要求:不要顶缘紫色指示线,活动态改靠描边/阴影/加粗区分,不用品牌色)
- * 尾部「+」新标签菜单(压缩包/文件夹);溢出横向滚动;中键可关闭。
+ * 多标签栏 — 浏览器风格胶囊标签(用户参考图):全圆角药丸 + 左图标 + 内联关闭钮,
+ * 活动标签浅强调色底;右侧为常驻搜索框(搜索当前压缩包,与页内搜索框同一状态),尾部「+」。
+ * 溢出横向滚动;中键可关闭。
  */
 import { useState } from 'react';
-import { IconAdd, IconArchive, IconClose, IconFolder } from './icons';
+import { IconAdd, IconArchive, IconClose, IconFolder, IconSearch } from './icons';
 import { basename } from '../lib/format';
 import { ContextMenu } from './ui';
 import { cn } from '@/lib/utils';
 
 export interface TabItem { id: string; archive: string; dir?: string }
 
-export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewFolder }: {
+export default function TabBar({ tabs, activeId, query, onSearch, onSelect, onClose, onNew, onNewFolder }: {
   tabs: TabItem[];
   activeId: string | null;
+  /** 当前活动标签的搜索词(提升自 TabView,胶囊条搜索框与页内搜索框共用) */
+  query: string;
+  onSearch(v: string): void;
   onSelect(id: string): void;
   onClose(id: string): void;
   onNew(): void;
@@ -22,27 +25,27 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNew
 }) {
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   return (
-    /* 标签条白底与其他页顶区同色;标签页用灰面(bg-secondary 浅灰 / 活动态 foreground 10% 深灰) */
-    <div className="flex h-[38px] shrink-0 items-end gap-[3px] bg-background px-2">
-      <div className="flex h-full min-w-0 items-end gap-[3px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex h-[44px] shrink-0 items-center gap-2 bg-background px-3 pt-1">
+      <div className="flex h-full min-w-0 items-center gap-[6px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((t) => {
           const on = t.id === activeId;
           return (
             <div key={t.id}
               className={cn(
-                'group/tab relative flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 select-none rounded-t-[9px] pl-2.5 pr-1.5 text-xs',
-                'max-w-[150px] transition-colors duration-150',
-                'bg-secondary text-muted-foreground hover:bg-secondary-foreground/[.09] hover:text-foreground active:bg-secondary-foreground/[.14]',
-                /* 活动标签:白底凸起——细描边 + 轻上影在白条上也能立住,不再压品牌色指示线;
-                   底边不描(与下方内容区无缝相接),并锁住 hover/active 白底防串到灰标签的悬停规则 */
-                on && 'border border-b-0 border-border bg-background font-semibold text-foreground shadow-[0_-1px_2px_rgba(20,26,32,.06)] hover:bg-background active:bg-background',
+                'group/tab relative flex h-7 w-[150px] min-w-[92px] shrink-0 cursor-pointer items-center gap-1.5 select-none rounded-full pl-2.5 pr-1.5 text-xs',
+                'transition-colors duration-150',
+                'bg-secondary/60 text-muted-foreground hover:bg-secondary-foreground/[.09] hover:text-foreground active:bg-secondary-foreground/[.14]',
+                /* 活动标签:浅强调色胶囊(参考图淡紫底),靠底色/描边/字重区分,不压顶缘指示线 */
+                on && 'border border-primary/15 bg-primary/[.08] font-medium text-foreground hover:bg-primary/[.12] active:bg-primary/[.16]',
               )}
               title={t.archive || t.dir}
               onClick={() => onSelect(t.id)}
               onAuxClick={(e) => { if (e.button === 1) onClose(t.id); }}>
-              {t.dir && <IconFolder className="size-[13px] shrink-0 text-primary" />}
-              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{basename(t.archive || t.dir || '')}</span>
-              <button className="grid size-[17px] shrink-0 place-items-center rounded-[4px] text-current opacity-0 transition-opacity duration-100 hover:bg-foreground/10 active:bg-foreground/20 focus-visible:opacity-100 group-hover/tab:opacity-100" title="关闭标签 (Ctrl+W)"
+              {t.dir
+                ? <IconFolder className={cn('size-[13px] shrink-0', on ? 'text-primary' : 'text-muted-foreground')} />
+                : <IconSearch className="size-[13px] shrink-0 opacity-70" />}
+              <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{basename(t.archive || t.dir || '')}</span>
+              <button className="grid size-[17px] shrink-0 place-items-center rounded-full text-current opacity-0 transition-opacity duration-100 hover:bg-foreground/10 active:bg-foreground/20 focus-visible:opacity-100 group-hover/tab:opacity-100" title="关闭标签 (Ctrl+W)"
                 onClick={(e) => { e.stopPropagation(); onClose(t.id); }}>
                 <IconClose className="size-[11px]" />
               </button>
@@ -50,11 +53,24 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNew
           );
         })}
       </div>
-      <button className="mb-[3px] grid size-[23px] shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground active:bg-secondary-foreground/[.14]" title="新建标签 (Ctrl+T)" onClick={(e) => {
+      {/* 常驻搜索框:过滤当前活动标签内容;id 供 Ctrl+F 聚焦 */}
+      <div className="ml-auto flex h-7 w-[230px] shrink-0 items-center gap-2 rounded-full border border-border/70 bg-secondary/50 px-2.5 text-muted-foreground transition-colors focus-within:border-primary/40 focus-within:bg-background">
+        <IconSearch className="size-[13px] shrink-0" />
+        <input id="tz-tab-search" value={query} placeholder="搜索当前压缩包中的文件…" spellCheck={false}
+          onChange={(e) => onSearch(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Escape') onSearch(''); }}
+          className="h-full w-auto min-w-0 flex-1 border-0 bg-transparent p-0 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground" />
+        {query && (
+          <button className="grid size-[16px] shrink-0 place-items-center rounded-full hover:bg-foreground/10" title="清空搜索 (Esc)" onClick={() => onSearch('')}>
+            <IconClose className="size-[10px]" />
+          </button>
+        )}
+      </div>
+      <button className="grid size-[26px] shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground active:bg-secondary-foreground/[.14]" title="新建标签 (Ctrl+T)" onClick={(e) => {
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
         setAddMenu({ x: r.left, y: r.bottom + 4 });
       }}>
-        <IconAdd className="size-[13px]" />
+        <IconAdd className="size-[14px]" />
       </button>
       {addMenu && (
         <ContextMenu x={addMenu.x} y={addMenu.y} onClose={() => setAddMenu(null)} items={[

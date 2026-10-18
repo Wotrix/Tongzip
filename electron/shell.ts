@@ -195,7 +195,9 @@ export async function uninstallShell(keepDefaultApps = false): Promise<void> {
     await deleteOpenIfOurs(e, cmd0);
   }
   for (const e of EXTS_OPENABLE) {
-    await regQuiet('delete', `${ROOT}\\${e}\\DefaultIcon`, '/ve');
+    /* /f 不可省:reg.exe 删非空默认值时无 /f 会弹交互确认,管道 stdio 下永久挂起并卡死整条卸载链
+     * (RC-14 实测:打包产物首次 shellInstall 卡 20+ 分钟) */
+    await regQuiet('delete', `${ROOT}\\${e}\\DefaultIcon`, '/ve', '/f');
   }
   /* 删除按后缀独立 ProgID(含历史共用的单 ProgID) */
   for (const e of EXTS) {

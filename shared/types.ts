@@ -25,6 +25,18 @@ export const ARCHIVE_EXTS_SYS_ONLY: readonly string[] = [
 /** 全部可识别为压缩包的扩展名(列表识别、扫描、文件图标用) */
 export const ARCHIVE_EXTS: readonly string[] = [...ARCHIVE_EXTS_OPENABLE, ...ARCHIVE_EXTS_SYS_ONLY];
 
+/** 自带 7za 21.07 实测可创建的格式(单一真相,阶段 4 X3 实测;tar.zst 无 zstd 编码器不在列)。
+ * 主进程 preflightCompress 与 UI 禁用态共用(ISS-02):不支持的创建格式在引擎启动前明确拒绝 */
+export const CREATABLE_FORMATS: readonly ArchiveFormat[] = ['7z', 'zip', 'tar', 'tar.gz', 'tar.bz2', 'tar.xz'];
+
+export function isCreatableFormat(f: ArchiveFormat): boolean {
+  return CREATABLE_FORMATS.includes(f);
+}
+
+/** ZIP 传统加密口令合法字符集(ASCII 可打印);阶段 4 实测非 ASCII 密码引擎裸报「参数错误」,
+ * UI 预校验与主进程拦截共用。7z 不受此限(实测可用),不得误拦。 */
+export const ZIP_PW_OK = /^[\x20-\x7E]*$/;
+
 export function isArchiveExt(ext: string): boolean {
   return (ARCHIVE_EXTS as readonly string[]).includes(ext.toLowerCase());
 }
@@ -183,6 +195,9 @@ export const ERR = {
   GUARD_LIMIT: 'GUARD_LIMIT',
   /** 路径与链接安全拦截:穿越/绝对/盘符/UNC/保留设备名/数据流/链接条目/重复落点 */
   UNSAFE_PATH: 'UNSAFE_PATH',
+  /** 启动前参数预检拦截(ISS-02):引擎不支持的创建格式、ZIP 密码字符集越界等——
+   * 在引擎执行前给出明确原因与出路,不允许底层错误冒充格式诊断 */
+  BAD_PARAM: 'BAD_PARAM',
 } as const;
 
 /** 启动时陈旧事务的恢复结果(阶段 3.1):restored=半替换中断被还原的归档,cleaned=清理掉的残留副本 */

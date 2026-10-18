@@ -13,6 +13,10 @@
     "dist": "npm run build && electron-builder --win",
     "selftest": "esbuild scripts/selftest.ts --bundle --platform=node --target=node20 --outfile=.tmp/selftest.cjs --log-level=error && node .tmp/selftest.cjs",
     "crash": "esbuild scripts/crash-test.ts --bundle --platform=node --target=node20 --outfile=.tmp/crash-test.cjs --log-level=error && node .tmp/crash-test.cjs",
+    "fmt-matrix": "esbuild scripts/format-matrix.ts --bundle --platform=node --target=node20 --outfile=.tmp/format-matrix.cjs --log-level=error && node .tmp/format-matrix.cjs",
+    "compat": "esbuild scripts/compat-probe.ts --bundle --platform=node --target=node20 --outfile=.tmp/compat-probe.cjs --log-level=error && node .tmp/compat-probe.cjs",
+    "install-test": "esbuild scripts/install-test.ts --bundle --platform=node --target=node20 --outfile=.tmp/install-test.cjs --log-level=error && node .tmp/install-test.cjs",
+    "stability": "esbuild scripts/stability.ts --bundle --platform=node --target=node20 --outfile=.tmp/stability.cjs --log-level=error && node .tmp/stability.cjs",
     "gate": "esbuild scripts/gate.ts --bundle --platform=node --target=node20 --outfile=.tmp/gate.cjs --log-level=error && node .tmp/gate.cjs"
   },
   "dependencies": {
@@ -76,7 +80,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "TongZip",
-      "license": "licenses/LICENSE-7-Zip.txt"
+      "license": "licenses/LICENSE-7-Zip.txt",
+      "include": "build/uninstall.nsh"
     }
   }
 }
