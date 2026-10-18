@@ -1,16 +1,16 @@
 # TongZip 1.0.0 · RC 剩余清单（仅未关闭项）
 
-**基线**：冻结提交 `e7f9eda2302cfdfc66dfafd365b4f9742f7a1c39`；权威发布候选包 `release-rc/`（哈希见 `docs/phase4/rc-freeze.json` files.authoritativeCleanRebuild）；RC-D1 与 RC-B7 自动化腿已关闭（见《RC-验收工作表》§1/§3 与矩阵文档 §8.1）。
+**基线**：冻结提交 `e7f9eda2302cfdfc66dfafd365b4f9742f7a1c39`；权威发布候选包 `release-rc/`（哈希见 `docs/phase4/rc-freeze.json` files.authoritativeCleanRebuild）；RC-D1、RC-B7 自动化腿、RC-C3/C9/C10 UI 冒烟自动化腿已关闭（见《RC-验收工作表》§1/§3/§4 与矩阵文档 §8.1/§8.2）。
 判定只用三态：**已验证通过 / 有条件接受 / 未验证**。本清单列全部未关闭项；已关闭项不重复收录。
 
 ## 1. 下一轮自动化（AI 执行，按此优先级）
 
 | ID | 项 | 状态 | 证据路径 | 责任人 | 下一步 |
 |---|---|---|---|---|---|
-| RC-C3 | ZIP 中文密码预检拦截 + ASCII/7Z 出路的 **UI 冒烟自动化**（自动腿 selftest/fmt-matrix 已过，UI 呈现未验证） | 未验证 | `docs/phase4/format-matrix.json`（自动腿） | AI | 新增 CDP UI 冒烟探针：断言 CompressDialog 提示文案在场、无半成品、截图留痕；通过后状态改"已验证通过（自动化）+截图辅助" |
-| RC-C4 | tar.zst 等不支持格式 **UI 选择即明示**的自动化冒烟 | 未验证 | 同上（BAD_PARAM 自动腿已过） | AI | 同探针覆盖：选中 tar.zst 即出提示、不静默、引擎不被调起 |
-| RC-C9 | 恶意包/炸弹 **UI 双击场景熔断呈现**冒烟 | 未验证 | selftest G 系列（引擎/守卫层已过） | AI | 用守卫样本经 UI 打开路径断言错误码+可读提示+无落盘 |
-| RC-C10 | 真实 UI 操作后密码零泄漏 grep 核验 | 未验证 | PW/T2 自动腿已过 | AI | 并入 C3/C4 探针收尾步骤（扫历史/journal/日志明文） |
+| RC-C3 | ZIP 中文密码预检拦截 + ASCII/7Z 出路的 **UI 冒烟自动化** | 已验证通过（自动化腿+截图辅助） | `docs/phase4/rcui-smoke.json`（UI-C3-01）+ `docs/phase4/rcui-shots/rc-c3-*.png` | AI（已完成） | 关闭；真机走查为可选加强项，不阻断 |
+| RC-C4 | tar.zst 等不支持格式 **UI 选择即明示**的自动化冒烟 | **未验证——发现缺陷候选 ISS-11**（已发货「压缩为 tar.gz」菜单静默降 7Z、无明示；`.tar.zst` 同证） | `docs/phase4/rcui-smoke.json`（UI-C4-01/02 mismatch）+ 截图 rc-c4-*.png + 矩阵文档 ISS-11/§8.2 | 负责人 | 定档 ISS-11（修复须产品代码改动，冻结纪律下不定改；候选方案=extToFormat 补复合 token 或词表统一）→ 定档后排入解冻轮修复并回归 |
+| RC-C9 | 恶意包/炸弹 **UI 双击场景熔断呈现**冒烟 | 已验证通过（自动化腿：真实 `--extract-here` 命令链熔断，toast 与 IPC `UNSAFE_PATH` 一致、零落地） | `docs/phase4/rcui-smoke.json`（UI-C9-01）+ 截图 rc-c9-guard-toast.png | AI（已完成） | 关闭自动化腿；炸弹体积/超大样本仍归 C5/C7 人工项 |
+| RC-C10 | 真实 UI 操作后密码零泄漏 grep 核验 | 已验证通过 | `docs/phase4/rcui-smoke.json`（UI-C10-01，哨兵词 0 命中） | AI（已完成） | 关闭 |
 
 纪律：以上均为**测试新增**，不改产品代码；发现缺陷只登记不定改。
 
@@ -39,9 +39,11 @@
 |---|---|---|---|
 | ISS-04 | 卸载时个人数据处置与说明书 12.3 对照 | 未定档 | RC-B5 人工结果 → 负责人定档 |
 | ISS-09 | lzma 族/zipx 能力边界口径 | 未定档 | RC-C2 真实样本 → 负责人定档 |
+| ISS-11 | 已发货「压缩为 tar.gz」菜单静默降 7Z、无回退明示（`App.extToFormat` 与 `handlePayload.EXT_TOKENS` 词表失配，复合 token 落 default；UI-C4-01/02 实锤，影响面含 Explorer 右键已发货命令） | 未定档（缺陷候选，冻结纪律只登记不定改） | 负责人定档：是否发布阻断/是否修订发布说明披露口径/修复排入解冻轮（候选=extToFormat 补复合 token 或词表统一，属产品代码改动，修后须重跑 rcui-smoke 回归） |
 
 ## 5. 发布闸门现状（快照）
 
-- 已确认缺陷级阻断：**无**。
+- 已确认缺陷级阻断：**无**；但存在**未定档缺陷候选 ISS-11**（UI-C4 冒烟实锤，见 §4），是否构成发布阻断待负责人定档。
 - 正式发布前置：**RC-B1/B3 人工腿**（唯一硬门槛，RC-D1 已关闭）；RC-D9 与 §1/§3 各项按"正式发布/带已知限制发布"目标由负责人裁剪。
+- 已关闭自动化项增补：RC-C3/C9/C10 UI 冒烟自动化腿已过（`docs/phase4/rcui-smoke.json` + 截图 6 张，被测 exe 哈希经 rc-freeze.json 核对）；RC-C4 因 ISS-11 保持未验证。
 - ARM64 红线持续有效：任何对外文案不得承诺原生 ARM64。
