@@ -1,6 +1,6 @@
 # TongZip 1.0.0 · RC 剩余清单（仅未关闭项）
 
-**基线**：冻结提交 `e7f9eda2302cfdfc66dfafd365b4f9742f7a1c39`；权威发布候选包 `release-rc/`（哈希见 `docs/phase4/rc-freeze.json` files.authoritativeCleanRebuild）；RC-D1、RC-B7 自动化腿、RC-C3/C9/C10 UI 冒烟自动化腿已关闭（见《RC-验收工作表》§1/§3/§4 与矩阵文档 §8.1/§8.2）。
+**基线**：RC2 修复基线提交 `33fd6c5ca20ae44de516d3df4bd3cea8d9442a1d`（ISS-11 例外解冻修复，已本地+干净检出双复验，哈希见 `docs/phase4/rc-freeze.json` files.rc2FixLocalBuild + rc2CleanReverify；原冻结基线 `e7f9eda` 与其证据保留不改写）；RC-D1、RC-B7 自动化腿、RC-C3/C4/C9/C10 UI 冒烟自动化腿、**ISS-11 修复回归**已关闭（见《RC-验收工作表》§1/§3/§4 与矩阵文档 §8.1/§8.2/§8.3）。
 判定只用三态：**已验证通过 / 有条件接受 / 未验证**。本清单列全部未关闭项；已关闭项不重复收录。
 
 ## 1. 下一轮自动化（AI 执行，按此优先级）
@@ -8,18 +8,18 @@
 | ID | 项 | 状态 | 证据路径 | 责任人 | 下一步 |
 |---|---|---|---|---|---|
 | RC-C3 | ZIP 中文密码预检拦截 + ASCII/7Z 出路的 **UI 冒烟自动化** | 已验证通过（自动化腿+截图辅助） | `docs/phase4/rcui-smoke.json`（UI-C3-01）+ `docs/phase4/rcui-shots/rc-c3-*.png` | AI（已完成） | 关闭；真机走查为可选加强项，不阻断 |
-| RC-C4 | tar.zst 等不支持格式 **UI 选择即明示**的自动化冒烟 | **未验证——发现缺陷候选 ISS-11**（已发货「压缩为 tar.gz」菜单静默降 7Z、无明示；`.tar.zst` 同证） | `docs/phase4/rcui-smoke.json`（UI-C4-01/02 mismatch）+ 截图 rc-c4-*.png + 矩阵文档 ISS-11/§8.2 | 负责人 | 定档 ISS-11（修复须产品代码改动，冻结纪律下不定改；候选方案=extToFormat 补复合 token 或词表统一）→ 定档后排入解冻轮修复并回归 |
+| RC-C4 | 压缩格式意图一致性 **UI 冒烟自动化**（明示可达/复合 token 识别/意图=产物/未知拒绝） | **已验证通过（自动化腿）**——曾实锤 ISS-11，经负责人定档发布阻断并例外解冻修复（提交 `33fd6c5`），四腿 UI-C4-01~04 全绿，含真实生成文件 gzip 魔数核验 | `docs/phase4/rcui-smoke.json`（UI-C4-01~04）+ 截图 rc-c4-*.png（含 unknown-token-error-toast）+ 矩阵文档 §8.3 | AI（已完成） | 关闭；真机 Explorer 菜单实测并入 §3 RC-B1/B3 |
 | RC-C9 | 恶意包/炸弹 **UI 双击场景熔断呈现**冒烟 | 已验证通过（自动化腿：真实 `--extract-here` 命令链熔断，toast 与 IPC `UNSAFE_PATH` 一致、零落地） | `docs/phase4/rcui-smoke.json`（UI-C9-01）+ 截图 rc-c9-guard-toast.png | AI（已完成） | 关闭自动化腿；炸弹体积/超大样本仍归 C5/C7 人工项 |
 | RC-C10 | 真实 UI 操作后密码零泄漏 grep 核验 | 已验证通过 | `docs/phase4/rcui-smoke.json`（UI-C10-01，哨兵词 0 命中） | AI（已完成） | 关闭 |
 
-纪律：以上均为**测试新增**，不改产品代码；发现缺陷只登记不定改。
+纪律：§1 各项均为**测试新增**；发现缺陷只登记不定改，产品代码改动须经负责人定档批准例外解冻后方可执行（ISS-11 即此流程首例：定档→解冻→修复→回归→新 RC 提交）。
 
 ## 2. 需负责人决策后执行
 
 | ID | 项 | 状态 | 证据路径 | 责任人 | 下一步 |
 |---|---|---|---|---|---|
-| RC-D9 | 独立 CI 复核（冻结提交重跑门禁，归档运行 ID/SHA/日志/产物摘要） | 未验证 | 本地双复验：`docs/phase4/rc-verify-gate.log`（干净检出）+ 原门禁记录 | 负责人 | 二选一：①批准新增 `.github/workflows`（当前仓库无 CI 文件，属冻结期基建扩展）后由 AI 提交、推送并归档首跑；②负责人在第二台机器 `git clone`+`npm ci` 复跑 `npm run gate`+`npm run fmt-matrix` 并回填留痕。注：推送前按流程需 L3 深度安全评审放行 |
-| 远程同步 | 冻结提交 e7f9eda 及证据提交尚未 push 至 origin | — | — | 负责人 | 与 RC-D9 同批决策（同一推送动作） |
+| RC-D9 | 第二台机器独立复核（**负责人已定档方案②**：不新增 CI workflow） | 未验证（操作单见 §6，待负责人在异机执行后回填结果与留痕方可关闭） | 本机双腿：`docs/phase4/rc-verify-gate.log`（e7f9eda 检出）+ `docs/phase4/rc2-verify-gate.log`（33fd6c5 检出） | 负责人 | 按 §6 操作单在第二台 Windows 机器执行：独立目录 clone 指定提交（不得复制工作树冒充）→ 记录环境版本 → `npm ci` → `npm run gate` + `npm run fmt-matrix` → 全留痕回填本清单。注：远端 push 另需 L3 深度安全评审放行，与复核解耦 |
+| 远程同步 | 冻结提交 `e7f9eda`、证据提交 `5741c16`、修复基线 `33fd6c5` 尚未 push 至 origin | — | — | 负责人 | 与 RC-D9 同批决策（同一推送动作；RC-D9 操作单§6 依赖 origin 可达或改用 U 盘介质 clone） |
 
 ## 3. 真机人工验收（负责人执行，AI 不代判）
 
@@ -39,11 +39,54 @@
 |---|---|---|---|
 | ISS-04 | 卸载时个人数据处置与说明书 12.3 对照 | 未定档 | RC-B5 人工结果 → 负责人定档 |
 | ISS-09 | lzma 族/zipx 能力边界口径 | 未定档 | RC-C2 真实样本 → 负责人定档 |
-| ISS-11 | 已发货「压缩为 tar.gz」菜单静默降 7Z、无回退明示（`App.extToFormat` 与 `handlePayload.EXT_TOKENS` 词表失配，复合 token 落 default；UI-C4-01/02 实锤，影响面含 Explorer 右键已发货命令） | 未定档（缺陷候选，冻结纪律只登记不定改） | 负责人定档：是否发布阻断/是否修订发布说明披露口径/修复排入解冻轮（候选=extToFormat 补复合 token 或词表统一，属产品代码改动，修后须重跑 rcui-smoke 回归） |
+
+（ISS-11 曾列于此:负责人定档为发布阻断→例外解冻修复→回归证据齐全,**已关闭**,见矩阵文档 §8.3 与 §1 RC-C4 行,不再收录。）
 
 ## 5. 发布闸门现状（快照）
 
-- 已确认缺陷级阻断：**无**；但存在**未定档缺陷候选 ISS-11**（UI-C4 冒烟实锤，见 §4），是否构成发布阻断待负责人定档。
-- 正式发布前置：**RC-B1/B3 人工腿**（唯一硬门槛，RC-D1 已关闭）；RC-D9 与 §1/§3 各项按"正式发布/带已知限制发布"目标由负责人裁剪。
-- 已关闭自动化项增补：RC-C3/C9/C10 UI 冒烟自动化腿已过（`docs/phase4/rcui-smoke.json` + 截图 6 张，被测 exe 哈希经 rc-freeze.json 核对）；RC-C4 因 ISS-11 保持未验证。
+- 未关闭发布阻断项：**无**（ISS-11 已按例外解冻流程修复并回归关闭；修复基线 `33fd6c5` 经本地 gate 6/6 + fmt-matrix 72/0 + rcui-smoke EXIT=0 + 干净检出复验四腿证据）。
+- 但按负责人执行顺序，**当前发布状态=暂不发布正式 1.0.0**：后续依次为 ②第二台机器复核 RC-D9（§6）→ ③真机人工验收 RC-A/B/C（§3，尤其 Explorer 菜单、安装升级、真实归档样本、异常场景）→ ④发布终裁。RC-B1/B3 人工腿仍是硬门槛。
+- 已关闭自动化项汇总：RC-C3/**C4**/C9/C10 UI 冒烟自动化腿（`docs/phase4/rcui-smoke.json` 8 条 records 全 ok + 截图 7 张，被测 exe 哈希命中 rc-freeze.json RC2 清单）。
 - ARM64 红线持续有效：任何对外文案不得承诺原生 ARM64。
+
+## 6. RC-D9 操作单 · 第二台 Windows 机器独立复核（负责人执行）
+
+**目标**：在与开发机隔离的环境独立验证 RC2 基线提交可复现构建与全部自动化门禁，产出可复核留痕。**不得复制当前工作树冒充独立检出**；本仓库不新增 CI workflow（负责人定档）。
+
+**前置条件**
+- 第二台 Windows x64 机器（建议 Win10/11，管理员可选但非必需——gate 含真实安装卸载演练，若环境受限跑不动某步，按"未验证"登记而非判失败）。
+- 网络可达 origin 仓库；不可达时改为在开发机 `git bundle create tongzip-rc2.bundle --all` 走 U 盘介质，异机 `git clone tongzip-rc2.bundle tongzip` 后同样 checkout 指定提交（bundle 方式须在留痕表注明介质与传递路径）。
+
+**执行步骤（PowerShell 7，全部命令建议原样使用并保留完整输出）**
+1. 独立工作目录：`New-Item -ItemType Directory -Path D:\rc-d9 -Force; Set-Location D:\rc-d9`
+2. 拉取指定提交：`git clone <origin-url> tongzip; Set-Location tongzip; git checkout 33fd6c5ca20ae44de516d3df4bd3cea8d9442a1d`
+3. 校验提交：`git rev-parse HEAD`（必须逐字符等于上述 SHA）+ `git status`（应干净）
+4. 登记环境版本（写入留痕表）：`node -v; npm -v; $env:PROCESSOR_ARCHITECTURE; systeminfo | Select-String 'OS Name|OS Version'; git rev-parse HEAD`
+5. 全新安装依赖（不许从别处拷贝 node_modules）：`npm ci`（记录退出码与耗时）
+6. 门禁：`npm run gate *>&1 | Tee-Object -FilePath d9-gate.log`；`Write-Output $LASTEXITCODE`（预期 6/6 PASS、退出码 0；gate 含真实安装→崩溃→卸载演练与依赖审计，预计 6–8 分钟）
+7. 格式矩阵：`npm run fmt-matrix *>&1 | Tee-Object -FilePath d9-fmt-matrix.log`；`Write-Output $LASTEXITCODE`（预期 72 项 0 不一致、退出码 0）
+8. 产物哈希：`Get-FileHash release\win-unpacked\TongZip.exe,release\win-unpacked\resources\app.asar,release\win-unpacked\resources\engine\7za.exe,'release\TongZip Setup 1.0.0.exe','release\TongZip 1.0.0.exe' -Algorithm SHA256`（连同文件字节数一并登记）
+
+**判读规则（负责人指令原文则）**
+- 内容层基准（开发机双跑已证逐字节可复现）：win-unpacked `TongZip.exe`=`20a653564e12a993ac8d673d92916dd08df97ce46281429f615347a2b52b9569`（189116928B）、`app.asar`=`35489738415205894db5ac87cd7bf155dc47e1135c3728ea17656176d0ec3336`（36597397B）、`7za.exe`=`b0cfdeaf429f5cc53f85123dd8f5a5feb92c19d31aa34df257edf9a26be05f95`（1231360B）。**内容层不一致=实质异常，须停下分析**（先核对 node/npm 版本与提交 SHA，再排查工具链差异），不得直接判通过。
+- Setup/portable 容器层哈希预期与开发机不同（NSIS 非确定性,见 rc-freeze.json determinism 说明）——属已知环境差异,如实登记即可,不判失败。
+- 格式矩阵结果与 `docs/phase4/format-matrix.json` 对比时,忽略 `generatedAt`、`engine` 绝对路径、临时目录随机后缀三类环境痕迹字段,只比 72 项实质结果。
+- 任何一步因缺依赖/环境不一致无法执行：该项登记**"未验证"**并注明原因，**不得用开发机旧日志补位**；RC-D9 仅在全部步骤完成且可复核时关闭。
+
+**留痕回填表**（结果贴回《RC-剩余清单》§2 与本表,日志文件建议随证据提交入库）
+
+| 字段 | 值 |
+|---|---|
+| 机器/系统版本 | |
+| Node.js / npm 版本 | |
+| 架构 (PROCESSOR_ARCHITECTURE) | |
+| clone 来源（origin URL 或 bundle 介质） | |
+| HEAD SHA（须=33fd6c5ca20ae44de516d3df4bd3cea8d9442a1d） | |
+| npm ci 退出码 / 耗时 | |
+| gate 退出码 / 各步耗时 / 日志文件 | |
+| fmt-matrix 退出码 / 项数 / 不一致数 / 日志文件 | |
+| 内容层三哈希对比结果（逐一 一致/不一致） | |
+| Setup / portable 哈希与字节数 | |
+| 与冻结证据差异分析（如有） | |
+| 未验证项及原因（如有） | |
+| 执行人 / 日期 | |
