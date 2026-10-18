@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+release-rc/
 .tmp/
 _ref_nanazip/
 *.log

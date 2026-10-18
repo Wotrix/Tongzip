@@ -16,11 +16,14 @@
 - 每项验证必须记录：`系统版本 / 测试条件 / 结果 / 复现步骤（失败时）/ 证据文件`，缺项不得归档。
 - 冻结纪律：**不再新增功能、不扩大改动范围**；验收期间发现的缺陷按严重级进入"发布/带限制发布/定点修复"决策，不即时改码。
 
-## 1. 冻结状态
+## 1. 冻结状态（RC-D1 已关闭）
 
-- 冻结清单：`docs/phase4/rc-freeze.json`（全部产物 SHA-256 + 门禁证据 + git 状态）。
-- ⚠ **追溯缺口**：git HEAD 仍为 `c2b784e`（2026-10-13），阶段 4 与修复轮的全部改动（engine/main/shell/package.json/selftest/types/UI + uninstall.nsh + 探针脚本）尚在未提交工作树。**在提交形成冻结基线之前，"安装包与通过门禁的提交一致"这一验收项无法成立。** 待负责人确认后提交，提交号回写本节并重出冻结清单。
-- 当前 HEAD（待提交）：`__________`；提交后哈希复核：`__________`
+- 冻结提交：`e7f9eda2302cfdfc66dfafd365b4f9742f7a1c39`（chore(release): freeze TongZip 1.0.0 RC baseline，分支 feat/shadcn-migration，28 文件 +4315/−61）。提交前检查：11 修改文件 + uninstall.nsh + 6 探针 + 文档/证据 JSON 全数入库；node_modules/dist/release/.tmp 由 .gitignore 排除；扫描无密钥/token；提交后工作树干净。
+- 干净检出复验：clone → checkout e7f9eda（detached）→ 在检出树内跑 **gate 6/6 PASS**（typecheck 5.2s / selftest 全绿 21.0s / 打包 111.3s / 产物核查 0.1s / 崩溃演练 325.3s / 依赖审计 runtime 零 HIGH-CRITICAL）+ **fmt-matrix 72 项 0 不一致**。日志留痕 `docs/phase4/rc-verify-gate.log`、`docs/phase4/rc-verify-fmt-matrix.log`。工具链经 node_modules 目录联接复用（已如实记录，非 npm ci；独立环境复核属 RC-D9）。
+- 产物哈希核对（`docs/phase4/rc-freeze.json` 权威清单 files.authoritativeCleanRebuild）：
+  - **内容层逐字节一致**：win-unpacked/TongZip.exe、app.asar、7za.exe（包内+源）、dist-electron/main.js、vite 资源、electron/main.ts、shell.ts、uninstall.nsh。
+  - **容器层不一致（已查明，不强行对齐）**：Setup 1.0.0（+1409B）与 portable（+1429B）哈希/尺寸与冻结前本地构建不同——NSIS/portable 容器嵌入构建期生成物（内联卸载器、时间戳）属非确定性；载荷 app.asar 恒等已证。**发布候选权威包已固化到 `release-rc/`（本地目录，不入库）**，两文件哈希与 `rc-freeze.json` 权威清单逐一吻合。
+- 当前 HEAD（冻结提交）：`e7f9eda2302cfdfc66dfafd365b4f9742f7a1c39`；提交后权威产物哈希复核：`docs/phase4/rc-freeze.json`（Setup `7ed4a9986e6b42f5…`，portable `d7ef294874c562ce…`，app.asar `5dac3752de68840d…`）
 
 ## 2. 区块一 · Windows 真机兼容性
 
@@ -47,7 +50,7 @@
 | RC-B4 | 装→卸→重装后功能恢复如初（菜单/关联/双击全可用） | RC-14 重装腿 | 重装后 RC-B1/B2 全重跑通过 | 未验证（自动腿键量 73=73 无累积已过） | 二次安装目录+截图 |
 | RC-B5 | 卸载个人数据行为：GUI 卸载是否询问保留（对照说明书 12.3），%APPDATA%\TongZip 实际处置 | ISS-04/RC-12/REL-06 | 记录实际行为 → 负责人定档 ISS-04 | 未验证 | 卸载向导截图 |
 | RC-B6 | 旧版本升级安装：设置/历史/最近保留，功能回归 | RC-03 | 升级前后数据比对 | 未验证 | 前后 userData 对比 |
-| RC-B7 | 升级场景不误触卸载清理钩子（${isUpdated} 守卫生效，关联不丢失） | uninstall.nsh 边界 | 升级后 RC-B1 仍通过 | 未验证 | 升级路径截图 |
+| RC-B7 | 升级场景不误触卸载清理钩子（${isUpdated} 守卫生效，关联不丢失） | uninstall.nsh 边界 | 升级后 RC-B1 仍通过 | **自动化腿已验证通过**：首装键 73（DisplayVersion 1.0.0）→ 同版本覆盖键 73→73 丢失 0 → **升级 1.0.1 后键 73→73 丢失 0、存活 command 224、DisplayVersion 迁移正确**（守卫未误触）→ 正常卸载键→0/死链 0/卸载登记消失（钩子生效）；UserChoice 全程不变。**升级前后菜单肉眼渲染仍为人工项**（随 RC-B1/B3 执行） | `docs/phase4/rcb7-results.json`（探针 scripts/rcb7-test.ts，100.6s 全绿） |
 
 ## 4. 区块三 · 归档格式与数据安全（真实样本）
 
@@ -68,7 +71,7 @@
 
 | ID | 核验项 | 通过判据 | 三态 |
 |---|---|---|---|
-| RC-D1 | **安装包与门禁提交一致** | §1 缺口关闭：提交冻结基线 → 从干净 checkout 重跑门禁 → 产物哈希与 rc-freeze.json 逐字节一致 | **未验证（存在追溯缺口，发布前必须关闭）** |
+| RC-D1 | **安装包与门禁提交一致** | §1 缺口关闭：提交冻结基线 → 从干净 checkout 重跑门禁 → 产物哈希与 rc-freeze.json 逐字节一致 | **已验证通过**（2026-10 干净检出 e7f9eda 复验：内容层逐字节一致；容器层非确定性已查明并如实登记，权威哈希=干净重建产物，见 §1 与 rc-freeze.json） |
 | RC-D2 | 许可证包 | win-unpacked/resources/licenses/LICENSE-7-Zip.txt + THIRD-PARTY-NOTICES.txt 在位（门禁步骤4已过），发布包内附 | 已验证通过（自动） |
 | RC-D3 | 引擎文件 | 源与包内 7za.exe 21.07 SHA-256 一致（rc-freeze.json 已绑定） | 已验证通过（自动） |
 | RC-D4 | 签名状态披露 | 发布说明写明 NotSigned/SmartScreen 预期行为（阶段发布限制） | 有条件接受→待披露落稿 |
@@ -80,9 +83,9 @@
 
 ## 6. 发布决策备忘（三态汇总）
 
-- **已验证通过（自动/引用证据）**：typecheck、selftest（含 SC1/PW/IP 系列）、格式矩阵 72 项、崩溃演练、门禁 6/6、RC-14 注册表生命周期（含装→卸→重装腿）、ISS-02/03/10 修复回归。
+- **已验证通过（自动/引用证据）**：typecheck、selftest（含 SC1/PW/IP 系列）、格式矩阵 72 项、崩溃演练、门禁 6/6（本地 + 干净检出 e7f9eda 双复验）、RC-14 注册表生命周期（含装→卸→重装腿）、RC-B7 升级守卫自动化腿（首装/同版本覆盖/升级/卸载四链路注册表状态迁移）、ISS-02/03/10 修复回归、RC-D1 提交一致性。
 - **有条件接受（须披露，草稿见《发布说明草稿-1.0.0.md》）**：ISS-01（tar 族密码，UI 拦+主进程纵深拒）、ISS-05（引擎能力边界）、ISS-06（4GB 档资源峰值，条件绑定）、ISS-07（NotSigned）、ISS-08（无自动更新）。
-- **未验证（不得计为通过）**：§2~§6 全部人工项、ISS-04/ISS-09（待 RC-B5/RC-C2 定性）、RC-D1/RC-D9（追溯与独立复核缺口）。
-- **发布阻断**：暂无已确认缺陷级阻断；但 **RC-D1（提交冻结）与 RC-B1/B3（真实菜单渲染/死链肉眼复核）关闭前不建议正式发布**。
+- **未验证（不得计为通过）**：§2 全部真机项、RC-B1/B2/B3/B4/B6 人工腿、RC-C 系列真实样本与 UI 走查、ISS-04/ISS-09（待 RC-B5/RC-C2 定性）、RC-D9（独立 CI/异机复核；本仓库尚无 CI workflow，需负责人批准引入或在第二台机器复跑）。
+- **发布阻断**：暂无已确认缺陷级阻断；**RC-B1/B3（真实 Explorer 菜单渲染与死链肉眼复核）关闭前不建议正式发布**（RC-D1 已于干净检出复验后关闭）。
 
 归档规则：本表逐项完成后回填留痕 → 全部区块进入"已验证通过/有条件接受"两态 → 由负责人终裁：正式发布 / 带已知限制发布 / 针对个别问题最后一轮修复。
