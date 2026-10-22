@@ -18,8 +18,8 @@
 
 | ID | 项 | 状态 | 证据路径 | 责任人 | 下一步 |
 |---|---|---|---|---|---|
-| RC-D9 | 第二台机器独立复核（**负责人已定档方案②**：不新增 CI workflow） | 未验证（RC4 自动更新已建立；待负责人在第二台机器执行后回填结果与留痕方可关闭） | 本机双腿：`rc-verify-gate.log`（e7f9eda）+ `rc2-verify-gate.log`（33fd6c5）+ `rc3-verify-gate.log`（291e00b）+ `rc4-verify-gate.log`（c56a392,npm ci）；预演：`rc-d9-dryrun-*.log` | 负责人 | 按 §6 在第二台 Windows 机器执行：独立目录 clone **c56a392**（不得复制工作树冒充）→ 记录环境版本 → `npm ci` → `npm run gate` + `npm run fmt-matrix` → 全留痕回填本清单 |
-| 远程同步 | 冻结提交 `e7f9eda`、证据提交 `5741c16`、修复基线 `33fd6c5`、RC3 `291e00b`、RC4 `c56a392` 尚未 push 至 origin | — | — | 负责人 | 与 RC-D9 同批决策（同一推送动作；RC-D9 操作单§6 依赖 origin 可达或改用 U 盘介质 clone） |
+| RC-D9 | 第二台机器独立复核（**负责人已定档方案②**：不新增 CI workflow） | 未验证（RC5 任务窗自动关闭已建立；待负责人在第二台机器执行后回填结果与留痕方可关闭） | 本机双腿：`rc-verify-gate.log`（e7f9eda）+ `rc2-verify-gate.log`（33fd6c5）+ `rc3-verify-gate.log`（291e00b）+ `rc4-verify-gate.log`（c56a392）+ `rc5-verify-gate.log`（2a6c5cd,npm ci）；预演：`rc-d9-dryrun-*.log` | 负责人 | 按 §6 在第二台 Windows 机器执行：独立目录 clone **2a6c5cd**（不得复制工作树冒充）→ 记录环境版本 → `npm ci` → `npm run gate` + `npm run fmt-matrix` → 全留痕回填本清单 |
+| 远程同步 | 冻结提交 `e7f9eda`、证据提交 `5741c16`、修复基线 `33fd6c5`、RC3 `291e00b`、RC4 `c56a392`、RC5 `2a6c5cd` 尚未 push 至 origin | — | — | 负责人 | 与 RC-D9 同批决策（同一推送动作；RC-D9 操作单§6 依赖 origin 可达或改用 U 盘介质 clone） |
 
 ## 3. 真机人工验收（负责人执行，AI 不代判）
 
@@ -57,7 +57,7 @@
 
 | # | 条件 | 当前状态 |
 |---|---|---|
-| 1 | RC-D9 完成并有可复核证据 | **未满足**——RC4 `c56a392` 已建立并完成本机 npm ci 复验；待第二台机器按 §6 执行 |
+| 1 | RC-D9 完成并有可复核证据 | **未满足**——RC5 `2a6c5cd` 已建立并完成本机 npm ci 复验；待第二台机器按 §6 执行 |
 | 2 | 所有强制人工验收项关闭 | **未满足**——RC-A/B/C 人工项未全部走完（RC-B1/B3 为硬门槛） |
 | 3 | 不存在未关闭的发布阻断缺陷 | **已满足**——ISS-11 关闭后无其他已确认阻断 |
 | 4 | 剩余有条件接受项均有明确风险说明与接受记录 | **部分满足**——发布说明草稿待 RC-D4~D8 终稿确认签署 |
@@ -67,13 +67,13 @@
 
 ## 6. RC-D9 操作单 · 第二台 Windows 机器独立复核（负责人执行）
 
-**目标**：在与开发机隔离的环境独立验证 **RC4 基线提交 `c56a392`** 的可复现构建与全部自动化门禁，产出可复核留痕。**不得复制当前工作树冒充独立检出**；本仓库不新增 CI workflow（负责人定档）。
+**目标**：在与开发机隔离的环境独立验证 **RC5 基线提交 `2a6c5cd`** 的可复现构建与全部自动化门禁，产出可复核留痕。**不得复制当前工作树冒充独立检出**；本仓库不新增 CI workflow（负责人定档）。
 
 **目标提交与证据提交的关系（执行前必读）**
-- **被测目标：`c56a3923d184085c020d59f6ce307d2d6413b492`**（RC4：接入 electron-updater 自动更新，含 `build.publish` GitHub 配置；产品源码在 RC3 基础上新增自动更新能力）。
-- **`291e00b` 与 `33fd6c5` 已不是 D9 目标**：`33fd6c5` 锁文件审计必失败（ISS-14）；`291e00b` 为 ISS-14 修复但无自动更新。二者作为历史证据保留，不改写。
-- **哈希基准**：`rc-freeze.json` 的 `files.rc4CleanRebuild` + `rc4CleanReverify`（由 `c56a392` 干净检出 + npm ci 重建；内容层 exe=`8402611a…`/asar=`691da685…`/7za=`b0cfdeaf…`；容器层为 NSIS 非确定性）。**检出树内自带的 `rc-freeze.json` 只含旧块**——权威 RC4 清单在本清单所在的证据提交中，判读时不得只看检出树内旧文件。
-- 若改在 RC4 证据提交检出（HEAD≠c56a392），必须在留痕表注明"HEAD=证据提交，产品代码 diff vs `c56a392` = 0"；**默认目标仍为 `c56a392`**。
+- **被测目标：`2a6c5cda5fc1131f872751f2a8ab53a896febff3`**（RC5：任务窗口在压缩成功后 1.2s 自动关闭；含 RC4 自动更新能力）。
+- **`c56a392`、`291e00b`、`33fd6c5` 已不是 D9 目标**：`c56a392` 为 RC4（任务窗仍常驻），`291e00b` 为 ISS-14 修复（无自动更新），`33fd6c5` 锁文件审计必失败。三者作为历史证据保留，不改写。
+- **哈希基准**：`rc-freeze.json` 的 `files.rc5CleanRebuild` + `rc5CleanReverify`（由 `2a6c5cd` 干净检出 + npm ci 重建；内容层 exe=`530562a1…`/asar=`265c6c1a…`/7za=`b0cfdeaf…`；容器层为 NSIS 非确定性）。**检出树内自带的 `rc-freeze.json` 只含旧块**——权威 RC5 清单在本清单所在的证据提交中，判读时不得只看检出树内旧文件。
+- 若改在 RC5 证据提交检出（HEAD≠2a6c5cd），必须在留痕表注明"HEAD=证据提交，产品代码 diff vs `2a6c5cd` = 0"；**默认目标仍为 `2a6c5cd`**。
 
 **前置条件**
 - 第二台 Windows x64 机器（建议 Win10/11，管理员可选但非必需——gate 含真实安装卸载演练，若环境受限跑不动某步，按"未验证"登记而非判失败）。
@@ -85,7 +85,7 @@
 3. 校验提交：`git rev-parse HEAD`（必须逐字符等于上述 SHA）+ `git status`（应干净）
 4. 登记环境版本（写入留痕表）：`node -v; npm -v; $env:PROCESSOR_ARCHITECTURE; systeminfo | Select-String 'OS Name|OS Version'; git rev-parse HEAD`
 5. 全新安装依赖（不许从别处拷贝 node_modules）：`npm ci`（记录退出码与耗时）
-5b. **依赖审计预检**：`npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org`（记录退出码与报告）。RC4 `c56a392` 预期 **0 漏洞**；若仍出现 HIGH/CRITICAL，停止并登记（不得以镜像 registry 的 audit 端点错误视为通过，必须用官方源取得明确结果）。
+5b. **依赖审计预检**：`npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org`（记录退出码与报告）。RC5 `2a6c5cd` 预期 **0 漏洞**；若仍出现 HIGH/CRITICAL，停止并登记（不得以镜像 registry 的 audit 端点错误视为通过，必须用官方源取得明确结果）。
 6. 门禁：`npm run gate *>&1 | Tee-Object -FilePath d9-gate.log`；`Write-Output $LASTEXITCODE`（预期 6/6 PASS、退出码 0；gate 含真实安装→崩溃→卸载演练与依赖审计，预计 6–8 分钟）
 7. 格式矩阵：`npm run fmt-matrix *>&1 | Tee-Object -FilePath d9-fmt-matrix.log`；`Write-Output $LASTEXITCODE`（预期 72 项 0 不一致、退出码 0）
 8. 产物哈希：`Get-FileHash release\win-unpacked\TongZip.exe,release\win-unpacked\resources\app.asar,release\win-unpacked\resources\engine\7za.exe,'release\TongZip Setup 1.0.0.exe','release\TongZip 1.0.0.exe' -Algorithm SHA256`（连同文件字节数一并登记）
@@ -104,8 +104,8 @@
 | Node.js / npm 版本 | |
 | 架构 (PROCESSOR_ARCHITECTURE) | |
 | clone 来源（origin URL 或 bundle 介质） | |
-| HEAD SHA（须=c56a3923d184085c020d59f6ce307d2d6413b492） | |
-| 权威清单来源（RC4 `files.rc4CleanRebuild` + `rc4CleanReverify`；若改用证据提交检出须注明产品 diff=0） | |
+| HEAD SHA（须=2a6c5cda5fc1131f872751f2a8ab53a896febff3） | |
+| 权威清单来源（RC5 `files.rc5CleanRebuild` + `rc5CleanReverify`；若改用证据提交检出须注明产品 diff=0） | |
 | npm ci 退出码 / 耗时 | |
 | gate 退出码 / 各步耗时 / 日志文件 | |
 | fmt-matrix 退出码 / 项数 / 不一致数 / 日志文件 | |
