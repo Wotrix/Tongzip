@@ -298,11 +298,17 @@ export interface AppAbout {
   node: string;
 }
 
-/** 检查更新结果:available=有新版 / latest=已最新 / notfound=发布页暂无版本 */
+/** 更新状态：checking=连接中；available=有新版；latest=已最新；notfound=发布页无版本；
+ * downloading=下载中；downloaded=已下载待重启；error=连接/校验失败（message 为可读原因） */
 export interface UpdateCheck {
-  status: 'available' | 'latest' | 'notfound';
+  status: 'checking' | 'available' | 'latest' | 'notfound' | 'downloading' | 'downloaded' | 'error';
   latest?: string;
   url?: string;
+  message?: string;
+  /** downloading 专用：0-100 */
+  percent?: number;
+  transferred?: number;
+  total?: number;
 }
 
 /** Shell 集成状态 */

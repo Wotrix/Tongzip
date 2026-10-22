@@ -139,6 +139,14 @@ export default function SettingsPage() {
     })();
   }, []);
 
+  /* 自动更新事件：主进程推送 checking/available/downloading/downloaded/error；
+     下载是后台自动进行的，设置页只负责展示进度与「重启并安装」 */
+  useEffect(() => window.tz.onUpdateEvent((ev) => {
+    setUpdate(ev);
+    if (ev.status === 'checking') setChecking(true);
+    else if (ev.status !== 'downloading' && ev.status !== 'available') setChecking(false);
+  }), []);
+
   if (!s || !base) return null;
 
   /* 逐键比对草稿与落盘快照(键值 JSON 化比较,contextMenu 这类嵌套对象同样适用) */
@@ -220,11 +228,17 @@ export default function SettingsPage() {
   };
 
   const doCheckUpdate = async () => {
-    setChecking(true); setUpdErr(null); setUpdate(null);
+    setChecking(true); setUpdErr(null); setUpdate({ status: 'checking' });
     const r = await window.tz.checkUpdate();
-    setChecking(false);
-    if (r.ok) { setUpdate(r.data); if (r.data.status === 'available') toast(`发现新版本 v${r.data.latest}`, 'ok'); }
-    else setUpdErr(r.message);
+    if (r.ok) {
+      setUpdate(r.data);
+      if (r.data.status !== 'checking') setChecking(false);
+      if (r.data.status === 'available') toast(`发现新版本 v${r.data.latest}，正在下载`, 'ok');
+    } else {
+      setUpdErr(r.message);
+      setChecking(false);
+      setUpdate({ status: 'error', message: r.message });
+    }
   };
 
   /** 反馈邮件预填版本与运行时信息,减少一轮往返追问 */
@@ -235,11 +249,16 @@ export default function SettingsPage() {
     void openLink(`mailto:${EMAIL}?subject=${encodeURIComponent('TongZip 反馈')}&body=${body}`);
   };
 
-  /** 检查更新结果的一行文案(按钮下方状态位) */
-  const updateHint = checking ? '正在连接 GitHub…'
-    : updErr ?? (update?.status === 'available' ? `发现新版本 v${update.latest},下载前请核对发布说明`
-      : update?.status === 'latest' ? `已是最新版本${update.latest ? ` (v${update.latest})` : ''}`
-        : update?.status === 'notfound' ? '发布页还没有正式版本' : '未检查');
+  /** 更新状态文案：连接/下载/就绪/错误都要有明确回音，不能只显示「未检查」 */
+  const updateHint = updErr
+    ?? (update?.status === 'checking' || checking ? '正在连接 GitHub…'
+      : update?.status === 'available' ? `发现新版本 v${update.latest}，正在下载…`
+        : update?.status === 'downloading' ? `正在下载更新 ${update.percent ?? 0}%…`
+          : update?.status === 'downloaded' ? `更新已就绪 v${update.latest}，重启后自动安装`
+            : update?.status === 'latest' ? `已是最新版本${update.latest ? ` (v${update.latest})` : ''}`
+              : update?.status === 'notfound' ? 'GitHub 上还没有正式版本'
+                : update?.status === 'error' ? (update.message ?? '更新检查失败')
+                  : '未检查');
 
   const cur = CATS.find((c) => c.id === cat);
   const title = cat === 'about' ? '关于 TongZip' : cur!.label;
@@ -502,15 +521,26 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className={SEC_ROWS}>
-                  <Row icon={<IconRefresh />} title="版本更新" sub={<>当前版本 v{about?.version ?? '—'} · {updateHint}</>}
+                  <Row icon={<IconRefresh />} title="版本更新" sub={<>
+                    当前版本 v{about?.version ?? '—'} · {updateHint}<br />
+                    <span className="text-[11px]">更新源：GitHub Releases（仅安装版支持自动更新，便携版请手动替换）</span>
+                  </>}
                     right={
                       <div className="flex items-center gap-1.5">
-                        {update?.status === 'available' && update.url && (
-                          <Button size="sm" className="h-[27px] px-[11px] text-xs" onClick={() => void openLink(update.url!)}>前往下载</Button>
+                        {(update?.status === 'notfound' || update?.status === 'error') && (
+                          <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal"
+                            onClick={() => void openLink('https://github.com/Wotrix/Tongzip/releases/latest')}>打开 Releases</Button>
                         )}
-                        <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal" disabled={checking} onClick={() => void doCheckUpdate()}>
-                          {checking ? '检查中…' : '检查更新'}
-                        </Button>
+                        {update?.status === 'downloaded' ? (
+                          <Button size="sm" className="h-[27px] px-[11px] text-xs" onClick={() => void window.tz.installUpdate()}>
+                            重启并安装
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" className="h-[27px] px-[9px] text-xs font-normal"
+                            disabled={checking || update?.status === 'downloading'} onClick={() => void doCheckUpdate()}>
+                            {checking ? '连接中…' : update?.status === 'downloading' ? '下载中…' : '检查更新'}
+                          </Button>
+                        )}
                       </div>
                     } />
                   <Row icon={<IconInfo />} title="Bug 反馈" sub="GitHub Issues 可跟进处理进度;涉及私密信息(路径/密码)请发邮件。"

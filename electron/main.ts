@@ -23,6 +23,7 @@ import {
   backfillTaskPaths, clearTaskHistory, configureTaskHistory, flushTaskHistory, getTaskHistory, loadTaskHistory, observeTaskEvent,
 } from './history';
 import { installShell, registerDefaultAppCapabilities, shellStatus, uninstallShell } from './shell';
+import { checkForUpdate, initUpdater, installUpdate, scheduleStartupCheck } from './updater';
 
 /* ------------------------------------------------------------------ */
 /* 常量与状态                                                          */
@@ -531,16 +532,20 @@ function installIpc(): void {
     node: process.versions.node,
   })));
   ipcMain.handle('tz:check-update', wrap(async (): Promise<UpdateCheck> => {
+    /* 打包态走 electron-updater（GitHub Releases + latest.yml，支持自动下载/安装）；
+       开发态无 app-update.yml，退回原有 API 检查，避免假装自动更新可用 */
+    if (app.isPackaged) return checkForUpdate();
     const r = await ghLatestRelease();
     if (!r) return { status: 'notfound' };
     const latest = r.tag.replace(/^v/i, '');
     const cur = app.getVersion();
-    /* 无 tag/解析失败时宁可报「已最新」,不拿空字符串吓用户 */
     if (!latest) return { status: 'latest', url: r.url };
     return cmpSemver(latest, cur) > 0
       ? { status: 'available', latest, url: r.url }
       : { status: 'latest', latest, url: r.url };
   }));
+  /* 下载完成后由用户确认重启安装（autoInstallOnAppQuit 亦会在退出时兜底） */
+  ipcMain.handle('tz:update-install', wrap(async () => { installUpdate(); }));
 
   ipcMain.handle('tz:settings-get', () => store.raw);
   ipcMain.handle('tz:settings-set', (_e, patch: Partial<Settings>) => {
@@ -715,6 +720,9 @@ if (isWin && process.argv.includes('--uninstall-shell')) {
     nativeTheme.themeSource = theme === 'auto' ? 'system' : theme;
     installIpc();
     win = createWindow();
+    /* 自动更新：事件经 tz:update-event 推给渲染层；打包态启动 15s 后静默检查一次 */
+    initUpdater(() => win);
+    scheduleStartupCheck();
     if (txnRecovery.restored.length || txnRecovery.cleaned.length) {
       /* 页面加载完成前 send 会丢(同启动载荷教训),挂 did-finish-load 一次性广播 */
       win.webContents.once('did-finish-load', () => {

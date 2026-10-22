@@ -37,6 +37,9 @@ declare global {
       setDefaultApp(): Promise<IpcResult<void>>;
       aboutInfo(): Promise<IpcResult<AppAbout>>;
       checkUpdate(): Promise<IpcResult<UpdateCheck>>;
+      installUpdate(): Promise<IpcResult<void>>;
+      /** 自动更新事件：checking/available/downloading/downloaded/error */
+      onUpdateEvent(fn: (ev: UpdateCheck) => void): () => void;
       winMinimize(): void;
       winMaximize(): void;
       winClose(): void;

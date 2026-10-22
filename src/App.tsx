@@ -355,6 +355,12 @@ function Shell() {
     return window.tz.onLaunch(handlePayload);
   }, [handlePayload]);
 
+  /* 自动更新全局提示：后台检查/下载完成时给用户回音；设置页只展示详细进度 */
+  useEffect(() => window.tz.onUpdateEvent((ev) => {
+    if (ev.status === 'available') toast(`发现新版本 v${ev.latest}，正在后台下载`, 'ok');
+    else if (ev.status === 'downloaded') toast(`新版本 v${ev.latest} 已下载，退出后自动安装`, 'ok');
+  }), [toast]);
+
   /* ---------- 全局拖放 + 高亮 ---------- */
   useEffect(() => {
     const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');

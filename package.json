@@ -17,7 +17,8 @@
     "compat": "esbuild scripts/compat-probe.ts --bundle --platform=node --target=node20 --outfile=.tmp/compat-probe.cjs --log-level=error && node .tmp/compat-probe.cjs",
     "install-test": "esbuild scripts/install-test.ts --bundle --platform=node --target=node20 --outfile=.tmp/install-test.cjs --log-level=error && node .tmp/install-test.cjs",
     "stability": "esbuild scripts/stability.ts --bundle --platform=node --target=node20 --outfile=.tmp/stability.cjs --log-level=error && node .tmp/stability.cjs",
-    "gate": "esbuild scripts/gate.ts --bundle --platform=node --target=node20 --outfile=.tmp/gate.cjs --log-level=error && node .tmp/gate.cjs"
+    "gate": "esbuild scripts/gate.ts --bundle --platform=node --target=node20 --outfile=.tmp/gate.cjs --log-level=error && node .tmp/gate.cjs",
+    "publish:win": "electron-builder --win --publish always"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -30,6 +31,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.4.0",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.51.0",
     "radix-ui": "^1.6.7",
     "sonner": "^2.0.8",
@@ -65,9 +67,18 @@
       "dist-electron/**/*"
     ],
     "extraResources": [
-      { "from": "engine", "to": "engine" },
-      { "from": "build/archive.ico", "to": "archive.ico" },
-      { "from": "licenses", "to": "licenses" }
+      {
+        "from": "engine",
+        "to": "engine"
+      },
+      {
+        "from": "build/archive.ico",
+        "to": "archive.ico"
+      },
+      {
+        "from": "licenses",
+        "to": "licenses"
+      }
     ],
     "win": {
       "target": [
@@ -82,6 +93,13 @@
       "shortcutName": "TongZip",
       "license": "licenses/LICENSE-7-Zip.txt",
       "include": "build/uninstall.nsh"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Wotrix",
+        "repo": "Tongzip"
+      }
+    ]
   }
 }

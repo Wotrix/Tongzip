@@ -63,6 +63,12 @@ const api = {
   /* 关于页 */
   aboutInfo: (): Promise<IpcResult<AppAbout>> => ipcRenderer.invoke('tz:about-info'),
   checkUpdate: (): Promise<IpcResult<UpdateCheck>> => ipcRenderer.invoke('tz:check-update'),
+  installUpdate: (): Promise<IpcResult<void>> => ipcRenderer.invoke('tz:update-install'),
+  onUpdateEvent: (fn: (ev: UpdateCheck) => void): Unsub => {
+    const h = (_e: unknown, ev: UpdateCheck) => fn(ev);
+    ipcRenderer.on('tz:update-event', h);
+    return () => ipcRenderer.off('tz:update-event', h);
+  },
 
   /* 窗口 */
   winMinimize: () => ipcRenderer.invoke('tz:win-minimize'),
