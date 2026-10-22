@@ -1,9 +1,9 @@
 /**
  * 独立任务窗口 — 压缩/解压启动时弹出的 frameless 小窗(?window=task 分流)。
  * 数据源:挂载时 taskSnapshot 回放已在跑的任务,再订阅 tz:progress 广播流;
- * 不自动关闭(Bandizip 式行为)——终态任务留在卡上供回看历史,仅右上角关闭按钮手动关。
+ * 全部任务成功后 1.2s 自动关窗(创建完压缩包不再留窗);失败/取消保留供查看,仍可手动关闭。
  * 版式对标 Bandizip 进度窗:标题=当前任务状态 / 每任务「%+已用时间+进度条」
- * / 多任务时追加总进度 / 当前文件行 / 底部工具条(打开位置·暂停·停止)+「全部任务已结束」。
+ * / 多任务时追加总进度 / 当前文件行 / 底部工具条(打开位置·暂停·停止)。
  * 标题栏除拖拽区与窗控外另有「置顶」图钉钮:长解压时把小窗挂在最前,不抢焦点也能盯进度。
  */
 import { useEffect, useRef, useState } from 'react';
@@ -70,8 +70,14 @@ export default function TaskWindow() {
   const settledN = jobs.length - running.length;
   useEffect(() => { if (settledN > 0) void window.tz.taskPaths().then(setPaths); }, [settledN]);
 
-  /* Bandizip 式手动关闭:jobs 只增不清,终态卡留存回看;关窗仅右上角按钮 */
+  /* 终态卡保留在 jobs 里;全部成功自动关窗,失败/取消由用户手动关 */
   const allSettled = jobs.length > 0 && running.length === 0;
+  /* 全部任务成功 → 1.2s 后自动关窗(创建完压缩包不再留窗);失败/取消保留供查看 */
+  useEffect(() => {
+    if (!jobs.length || !jobs.every((j) => j.status === 'done')) return;
+    const t = window.setTimeout(() => { void window.tz.winClose(); }, 1200);
+    return () => window.clearTimeout(t);
+  }, [jobs]);
   /* 标题 = 当前任务(首个运行中,无则最后一个)状态;多任务加计数角标 */
   const focusEv = running[0] ?? jobs[jobs.length - 1];
   const title = !focusEv ? '任务'
@@ -191,9 +197,9 @@ export default function TaskWindow() {
           </button>
         </div>
       </footer>
-      {/* 终态提示常驻(探针/用户均依赖):手动关窗前明确「没有在跑的任务了」 */}
+      {/* 终态提示:成功时短暂显示后自动关窗;失败/取消保留 */}
       <div className="h-[22px] shrink-0 bg-secondary pb-1 text-center text-[11.5px] leading-none text-muted-foreground">
-        {allSettled ? '全部任务已结束' : ''}
+        {allSettled ? (jobs.every((j) => j.status === 'done') ? '已完成，窗口即将关闭…' : '全部任务已结束') : ''}
       </div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
