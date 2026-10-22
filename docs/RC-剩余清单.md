@@ -67,6 +67,12 @@
 
 **目标**：在与开发机隔离的环境独立验证 RC2 基线提交可复现构建与全部自动化门禁，产出可复核留痕。**不得复制当前工作树冒充独立检出**；本仓库不新增 CI workflow（负责人定档）。
 
+**目标提交与证据提交的关系（执行前必读）**
+- **被测目标：`33fd6c5ca20ae44de516d3df4bd3cea8d9442a1d`**（ISS-11 修复提交，含产品代码、探针与 `rc2FixLocalBuild` 初始哈希清单）。
+- 证据提交 `1406540` **仅含 6 个文档/日志文件**（rc-freeze.json、工作表、剩余清单、矩阵文档、两份复验日志），产品代码与 `33fd6c5` **差异为 0 行**（`git diff --stat 33fd6c5..1406540 -- electron shared src scripts` 为空）。该提交把 `files.rc2FixLocalBuild` 升为权威并新增 `rc2CleanReverify`；后续 `8ff8d94` 再追加 `ownerAdjudication`（均为文档，产品代码无变化）。
+- **判读口径**：在 `33fd6c5` 检出树内构建与测试；哈希对比基准使用 **`1406540` 及之后的 `rc-freeze.json`**。检出树内自带的旧清单会显示"待干净检出复验后升为权威"，**不得据此误判**——权威口径在证据提交中。
+- 若希望在检出树内自带权威清单与复验日志，可改在 `1406540` 检出，但必须在留痕表注明"HEAD=1406540，产品代码 diff vs 33fd6c5 = 0"；**默认目标仍为 `33fd6c5`**。
+
 **前置条件**
 - 第二台 Windows x64 机器（建议 Win10/11，管理员可选但非必需——gate 含真实安装卸载演练，若环境受限跑不动某步，按"未验证"登记而非判失败）。
 - 网络可达 origin 仓库；不可达时改为在开发机 `git bundle create tongzip-rc2.bundle --all` 走 U 盘介质，异机 `git clone tongzip-rc2.bundle tongzip` 后同样 checkout 指定提交（bundle 方式须在留痕表注明介质与传递路径）。
@@ -96,6 +102,7 @@
 | 架构 (PROCESSOR_ARCHITECTURE) | |
 | clone 来源（origin URL 或 bundle 介质） | |
 | HEAD SHA（须=33fd6c5ca20ae44de516d3df4bd3cea8d9442a1d） | |
+| 权威清单来源（1406540 及之后 rc-freeze.json；若改用 1406540 检出须注明产品 diff=0） | |
 | npm ci 退出码 / 耗时 | |
 | gate 退出码 / 各步耗时 / 日志文件 | |
 | fmt-matrix 退出码 / 项数 / 不一致数 / 日志文件 | |
