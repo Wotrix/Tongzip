@@ -1,6 +1,6 @@
 # TongZip 1.0.0 · RC 剩余清单（仅未关闭项）
 
-**基线**：RC4 基线提交 `c56a3923d184085c020d59f6ce307d2d6413b492`（自动更新 electron-updater 接入，仅安装版；已本地 + 干净检出 npm ci 双复验，哈希见 `docs/phase4/rc-freeze.json` files.rc4CleanRebuild + rc4CleanReverify；历史 RC3 `291e00b`、RC2 `33fd6c5` 与原冻结 `e7f9eda` 证据保留不改写）；RC-D1、RC-B7 自动化腿、RC-C3/C4/C9/C10 UI 冒烟自动化腿、**ISS-11/ISS-14 修复回归、自动更新链路**已关闭（见《RC-验收工作表》§1/§3/§4 与矩阵文档 §8.1/§8.2/§8.3/§8.5/§8.6）。
+**基线**：RC6 基线提交 `59dc26a487206c80b94109dc19c006d448a14904`（任务窗完成态动画/绿色进度条；含 RC4 自动更新；已本地 + 干净检出 npm ci 双复验，哈希见 `docs/phase4/rc-freeze.json` files.rc6CleanRebuild + rc6CleanReverify；历史 RC5 `2a6c5cd`、RC4 `c56a392`、RC3 `291e00b`、RC2 `33fd6c5` 与原冻结 `e7f9eda` 证据保留不改写）；RC-D1、RC-B7 自动化腿、RC-C3/C4/C9/C10 UI 冒烟自动化腿、**ISS-11/ISS-14 修复回归、自动更新链路、任务窗自动关闭/完成态动画**已关闭（见《RC-验收工作表》§1/§3/§4 与矩阵文档 §8.1~§8.8）。
 判定只用三态：**已验证通过 / 有条件接受 / 未验证**。本清单列全部未关闭项；已关闭项不重复收录。
 
 ## 1. 下一轮自动化（AI 执行，按此优先级）
@@ -18,8 +18,8 @@
 
 | ID | 项 | 状态 | 证据路径 | 责任人 | 下一步 |
 |---|---|---|---|---|---|
-| RC-D9 | 第二台机器独立复核（**负责人已定档方案②**：不新增 CI workflow） | 未验证（RC5 任务窗自动关闭已建立；待负责人在第二台机器执行后回填结果与留痕方可关闭） | 本机双腿：`rc-verify-gate.log`（e7f9eda）+ `rc2-verify-gate.log`（33fd6c5）+ `rc3-verify-gate.log`（291e00b）+ `rc4-verify-gate.log`（c56a392）+ `rc5-verify-gate.log`（2a6c5cd,npm ci）；预演：`rc-d9-dryrun-*.log` | 负责人 | 按 §6 在第二台 Windows 机器执行：独立目录 clone **2a6c5cd**（不得复制工作树冒充）→ 记录环境版本 → `npm ci` → `npm run gate` + `npm run fmt-matrix` → 全留痕回填本清单 |
-| 远程同步 | 冻结提交 `e7f9eda`、证据提交 `5741c16`、修复基线 `33fd6c5`、RC3 `291e00b`、RC4 `c56a392`、RC5 `2a6c5cd` 尚未 push 至 origin | — | — | 负责人 | 与 RC-D9 同批决策（同一推送动作；RC-D9 操作单§6 依赖 origin 可达或改用 U 盘介质 clone） |
+| RC-D9 | 第二台机器独立复核（**负责人已定档方案②**：不新增 CI workflow） | 未验证（RC6 任务窗自动关闭已建立；待负责人在第二台机器执行后回填结果与留痕方可关闭） | 本机双腿：`rc-verify-gate.log`（e7f9eda）+ `rc2-verify-gate.log`（33fd6c5）+ `rc3-verify-gate.log`（291e00b）+ `rc4-verify-gate.log`（c56a392）+ `rc6-verify-gate.log`（59dc26a,npm ci）；预演：`rc-d9-dryrun-*.log` | 负责人 | 按 §6 在第二台 Windows 机器执行：独立目录 clone **59dc26a**（不得复制工作树冒充）→ 记录环境版本 → `npm ci` → `npm run gate` + `npm run fmt-matrix` → 全留痕回填本清单 |
+| 远程同步 | 冻结提交 `e7f9eda`、证据提交 `5741c16`、修复基线 `33fd6c5`、RC3 `291e00b`、RC4 `c56a392`、RC6 `59dc26a` 尚未 push 至 origin | — | — | 负责人 | 与 RC-D9 同批决策（同一推送动作；RC-D9 操作单§6 依赖 origin 可达或改用 U 盘介质 clone） |
 
 ## 3. 真机人工验收（负责人执行，AI 不代判）
 
@@ -48,16 +48,16 @@
 
 ## 5. 发布闸门现状（快照）
 
-- 未关闭发布阻断项：**无**（ISS-11/ISS-14 已关闭；自动更新已接入。RC4 基线 `c56a392` 经 npm ci 全新安装 + 干净检出 gate 6/6、fmt 72/0、audit 0；主工作区 gate 6/6 + rcui EXIT=0；打包态检查连 GitHub + 本地源下载链路均验证）。
+- 未关闭发布阻断项：**无**（ISS-11/ISS-14 已关闭；自动更新已接入；任务窗完成态动画+成功后自动关闭。RC6 基线 `59dc26a` 经 npm ci 全新安装 + 干净检出 gate 6/6、fmt 72/0、audit 0；主工作区 gate 6/6 + rcui EXIT=0；自动更新检查/下载链路、任务窗完成态截图与自动关闭均实测）。
 - 但按负责人执行顺序，**当前发布状态=暂不发布正式 1.0.0**：后续依次为 ②第二台机器复核 RC-D9（§6）→ ③真机人工验收 RC-A/B/C（§3，尤其 Explorer 菜单、安装升级、真实归档样本、异常场景）→ ④发布终裁。RC-B1/B3 人工腿仍是硬门槛。
-- 已关闭自动化项汇总：RC-C3/**C4**/C9/C10 UI 冒烟自动化腿（`docs/phase4/rcui-smoke.json` 8 条 records 全 ok + 截图 7 张，被测 exe 哈希命中 rc-freeze.json RC4/RC3/RC2 清单——内容层自 RC2 起相同）。
+- 已关闭自动化项汇总：RC-C3/**C4**/C9/C10 UI 冒烟自动化腿（`docs/phase4/rcui-smoke.json` 8 条 records 全 ok + 截图 7 张，被测 exe 哈希命中 rc-freeze.json RC6/RC4/RC3/RC2 清单——内容层自 RC2 起相同）。
 - ARM64 红线持续有效：任何对外文案不得承诺原生 ARM64。
 
 **发布终裁五项条件（负责人定档，2026-10；须同时满足）**
 
 | # | 条件 | 当前状态 |
 |---|---|---|
-| 1 | RC-D9 完成并有可复核证据 | **未满足**——RC5 `2a6c5cd` 已建立并完成本机 npm ci 复验；待第二台机器按 §6 执行 |
+| 1 | RC-D9 完成并有可复核证据 | **未满足**——RC6 `59dc26a` 已建立并完成本机 npm ci 复验；待第二台机器按 §6 执行 |
 | 2 | 所有强制人工验收项关闭 | **未满足**——RC-A/B/C 人工项未全部走完（RC-B1/B3 为硬门槛） |
 | 3 | 不存在未关闭的发布阻断缺陷 | **已满足**——ISS-11 关闭后无其他已确认阻断 |
 | 4 | 剩余有条件接受项均有明确风险说明与接受记录 | **部分满足**——发布说明草稿待 RC-D4~D8 终稿确认签署 |
@@ -67,13 +67,13 @@
 
 ## 6. RC-D9 操作单 · 第二台 Windows 机器独立复核（负责人执行）
 
-**目标**：在与开发机隔离的环境独立验证 **RC5 基线提交 `2a6c5cd`** 的可复现构建与全部自动化门禁，产出可复核留痕。**不得复制当前工作树冒充独立检出**；本仓库不新增 CI workflow（负责人定档）。
+**目标**：在与开发机隔离的环境独立验证 **RC6 基线提交 `59dc26a`** 的可复现构建与全部自动化门禁，产出可复核留痕。**不得复制当前工作树冒充独立检出**；本仓库不新增 CI workflow（负责人定档）。
 
 **目标提交与证据提交的关系（执行前必读）**
-- **被测目标：`2a6c5cda5fc1131f872751f2a8ab53a896febff3`**（RC5：任务窗口在压缩成功后 1.2s 自动关闭；含 RC4 自动更新能力）。
+- **被测目标：`59dc26a487206c80b94109dc19c006d448a14904`**（RC6：任务窗口完成态动画/绿色进度条 + 2.4s 自动关闭；含 RC4 自动更新能力）。
 - **`c56a392`、`291e00b`、`33fd6c5` 已不是 D9 目标**：`c56a392` 为 RC4（任务窗仍常驻），`291e00b` 为 ISS-14 修复（无自动更新），`33fd6c5` 锁文件审计必失败。三者作为历史证据保留，不改写。
-- **哈希基准**：`rc-freeze.json` 的 `files.rc5CleanRebuild` + `rc5CleanReverify`（由 `2a6c5cd` 干净检出 + npm ci 重建；内容层 exe=`530562a1…`/asar=`265c6c1a…`/7za=`b0cfdeaf…`；容器层为 NSIS 非确定性）。**检出树内自带的 `rc-freeze.json` 只含旧块**——权威 RC5 清单在本清单所在的证据提交中，判读时不得只看检出树内旧文件。
-- 若改在 RC5 证据提交检出（HEAD≠2a6c5cd），必须在留痕表注明"HEAD=证据提交，产品代码 diff vs `2a6c5cd` = 0"；**默认目标仍为 `2a6c5cd`**。
+- **哈希基准**：`rc-freeze.json` 的 `files.rc6CleanRebuild` + `rc6CleanReverify`（由 `59dc26a` 干净检出 + npm ci 重建；内容层 exe=`9123afb9…`/asar=`1e7f3d27…`/7za=`b0cfdeaf…`；容器层为 NSIS 非确定性）。**检出树内自带的 `rc-freeze.json` 只含旧块**——权威 RC6 清单在本清单所在的证据提交中，判读时不得只看检出树内旧文件。
+- 若改在 RC6 证据提交检出（HEAD≠59dc26a），必须在留痕表注明"HEAD=证据提交，产品代码 diff vs `59dc26a` = 0"；**默认目标仍为 `59dc26a`**。
 
 **前置条件**
 - 第二台 Windows x64 机器（建议 Win10/11，管理员可选但非必需——gate 含真实安装卸载演练，若环境受限跑不动某步，按"未验证"登记而非判失败）。
@@ -81,18 +81,18 @@
 
 **执行步骤（PowerShell 7，全部命令建议原样使用并保留完整输出）**
 1. 独立工作目录：`New-Item -ItemType Directory -Path D:\rc-d9 -Force; Set-Location D:\rc-d9`
-2. 拉取指定提交：`git clone <origin-url> tongzip; Set-Location tongzip; git checkout 291e00b53c4d316573d9df612b78d9a37abdb2be`
+2. 拉取指定提交：`git clone <origin-url> tongzip; Set-Location tongzip; git checkout 59dc26a487206c80b94109dc19c006d448a14904`
 3. 校验提交：`git rev-parse HEAD`（必须逐字符等于上述 SHA）+ `git status`（应干净）
 4. 登记环境版本（写入留痕表）：`node -v; npm -v; $env:PROCESSOR_ARCHITECTURE; systeminfo | Select-String 'OS Name|OS Version'; git rev-parse HEAD`
 5. 全新安装依赖（不许从别处拷贝 node_modules）：`npm ci`（记录退出码与耗时）
-5b. **依赖审计预检**：`npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org`（记录退出码与报告）。RC5 `2a6c5cd` 预期 **0 漏洞**；若仍出现 HIGH/CRITICAL，停止并登记（不得以镜像 registry 的 audit 端点错误视为通过，必须用官方源取得明确结果）。
+5b. **依赖审计预检**：`npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org`（记录退出码与报告）。RC6 `59dc26a` 预期 **0 漏洞**；若仍出现 HIGH/CRITICAL，停止并登记（不得以镜像 registry 的 audit 端点错误视为通过，必须用官方源取得明确结果）。
 6. 门禁：`npm run gate *>&1 | Tee-Object -FilePath d9-gate.log`；`Write-Output $LASTEXITCODE`（预期 6/6 PASS、退出码 0；gate 含真实安装→崩溃→卸载演练与依赖审计，预计 6–8 分钟）
 7. 格式矩阵：`npm run fmt-matrix *>&1 | Tee-Object -FilePath d9-fmt-matrix.log`；`Write-Output $LASTEXITCODE`（预期 72 项 0 不一致、退出码 0）
 8. 产物哈希：`Get-FileHash release\win-unpacked\TongZip.exe,release\win-unpacked\resources\app.asar,release\win-unpacked\resources\engine\7za.exe,'release\TongZip Setup 1.0.0.exe','release\TongZip 1.0.0.exe' -Algorithm SHA256`（连同文件字节数一并登记）
 
 **判读规则（负责人指令原文则）**
-- 内容层基准（RC4 干净检出已证逐字节可复现）：win-unpacked `TongZip.exe`=`8402611aee0a2fbef24b9ca27c5392a8031e5df08825dc30c612fb686bb5dea0`（189116928B）、`app.asar`=`691da685618688a48362f69b6301a0e802736baff0b76eb7d13769c6a9eebea9`（38995628B）、`7za.exe`=`b0cfdeaf429f5cc53f85123dd8f5a5feb92c19d31aa34df257edf9a26be05f95`（1231360B）。**内容层不一致=实质异常，须停下分析**（先核对 node/npm 版本与提交 SHA，再排查工具链差异），不得直接判通过。
-- Setup/portable 容器层哈希预期与开发机不同（NSIS 非确定性,见 rc-freeze.json determinism 说明）——RC4 干净重建参考值：Setup `d19036d4…`(81237315B)、portable `e6fe196f…`(80932970B)；如实登记差异即可,不判失败。
+- 内容层基准（RC6 干净检出已证逐字节可复现）：win-unpacked `TongZip.exe`=`9123afb96372fb85675994db952fb701ee86df2996efe38f8d5de7ab9c0892e0`（189116928B）、`app.asar`=`1e7f3d275d065d3041a75bf0888ccabc2ec8fcd60f7555c10e6180bb2a2c5a07`（38999816B）、`7za.exe`=`b0cfdeaf429f5cc53f85123dd8f5a5feb92c19d31aa34df257edf9a26be05f95`（1231360B）。**内容层不一致=实质异常，须停下分析**（先核对 node/npm 版本与提交 SHA，再排查工具链差异），不得直接判通过。
+- Setup/portable 容器层哈希预期与开发机不同（NSIS 非确定性,见 rc-freeze.json determinism 说明）——RC6 干净重建参考值：Setup `64905b89…`(81239587B)、portable `a9b4a3a8…`(80935224B)；如实登记差异即可,不判失败。
 - 格式矩阵结果与 `docs/phase4/format-matrix.json` 对比时,忽略 `generatedAt`、`engine` 绝对路径、临时目录随机后缀三类环境痕迹字段,只比 72 项实质结果。
 - 任何一步因缺依赖/环境不一致无法执行：该项登记**"未验证"**并注明原因，**不得用开发机旧日志补位**；RC-D9 仅在全部步骤完成且可复核时关闭。
 
@@ -104,8 +104,8 @@
 | Node.js / npm 版本 | |
 | 架构 (PROCESSOR_ARCHITECTURE) | |
 | clone 来源（origin URL 或 bundle 介质） | |
-| HEAD SHA（须=2a6c5cda5fc1131f872751f2a8ab53a896febff3） | |
-| 权威清单来源（RC5 `files.rc5CleanRebuild` + `rc5CleanReverify`；若改用证据提交检出须注明产品 diff=0） | |
+| HEAD SHA（须=59dc26a487206c80b94109dc19c006d448a14904） | |
+| 权威清单来源（RC6 `files.rc6CleanRebuild` + `rc6CleanReverify`；若改用证据提交检出须注明产品 diff=0） | |
 | npm ci 退出码 / 耗时 | |
 | gate 退出码 / 各步耗时 / 日志文件 | |
 | fmt-matrix 退出码 / 项数 / 不一致数 / 日志文件 | |
