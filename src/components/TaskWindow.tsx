@@ -23,6 +23,9 @@ const KIND: Record<JobKind, { run: string; done: string }> = {
   delete: { run: '正在删除', done: '已删除' },
 };
 
+/** 成功完成态停留时长：让成功动画可见，然后自动关窗 */
+const AUTO_CLOSE_MS = 2400;
+
 /** 秒 → h:mm:ss / m:ss(Bandizip 式用时) */
 function fmtElapsed(sec: number): string {
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
@@ -72,12 +75,22 @@ export default function TaskWindow() {
 
   /* 终态卡保留在 jobs 里;全部成功自动关窗,失败/取消由用户手动关 */
   const allSettled = jobs.length > 0 && running.length === 0;
-  /* 全部任务成功 → 1.2s 后自动关窗(创建完压缩包不再留窗);失败/取消保留供查看 */
+  const allDone = allSettled && jobs.every((j) => j.status === 'done');
+  /* 全部任务成功 → 展示成功动画后自动关窗(创建完压缩包不再留窗) */
   useEffect(() => {
-    if (!jobs.length || !jobs.every((j) => j.status === 'done')) return;
-    const t = window.setTimeout(() => { void window.tz.winClose(); }, 1200);
+    if (!allDone) return;
+    const t = window.setTimeout(() => { void window.tz.winClose(); }, AUTO_CLOSE_MS);
     return () => window.clearTimeout(t);
-  }, [jobs]);
+  }, [allDone]);
+  /* 成功卡文案/产物名:压缩完成展示输出文件名,多任务展示总数 */
+  const doneJob = allDone ? jobs[jobs.length - 1] : null;
+  const donePath = doneJob
+    ? paths[doneJob.taskId]?.output ?? paths[doneJob.taskId]?.archive ?? paths[doneJob.taskId]?.dest
+    : undefined;
+  const doneName = donePath ? donePath.split(/[\\/]/).pop() : doneJob?.file;
+  const doneText = doneJob
+    ? (jobs.length > 1 ? '全部任务已完成' : `${KIND[doneJob.kind].done.slice(1)}操作已成功完成`)
+    : '';
   /* 标题 = 当前任务(首个运行中,无则最后一个)状态;多任务加计数角标 */
   const focusEv = running[0] ?? jobs[jobs.length - 1];
   const title = !focusEv ? '任务'
@@ -162,8 +175,30 @@ export default function TaskWindow() {
               <span className="tabular-nums text-muted-foreground">{jobs.filter((j) => j.status === 'done').length}/{jobs.length} 个完成</span>
             </div>
             <div className="h-[10px] overflow-hidden rounded-full bg-muted">
-              <i className="h-full rounded-full bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))] transition-[width] duration-300 ease-out"
+              <i className={cn('block h-full rounded-full transition-[width] duration-300 ease-out',
+                allDone ? 'bg-emerald-500' : 'bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))]')}
                 style={{ width: `${totalPct}%` }} />
+            </div>
+          </div>
+        )}
+        {allDone && (
+          <div className="tw-done-in mt-auto flex flex-col items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/[.06] px-4 py-4 text-center">
+            <div className="tw-check-pop grid size-11 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_6px_16px_rgba(16,185,129,.35)]">
+              <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                <path className="tw-check-path" d="M5.5 12.5l4.2 4.2L18.5 8" />
+              </svg>
+            </div>
+            <div className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-300">{doneText}</div>
+            {doneName && (
+              <div className="max-w-full truncate text-[11.5px] text-muted-foreground" title={doneName}>{doneName}</div>
+            )}
+            <div className="mt-1 h-[5px] w-full overflow-hidden rounded-full bg-emerald-500/15">
+              <i className="tw-done-countdown block h-full rounded-full bg-emerald-500" />
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span>窗口即将自动关闭…</span>
+              <button className="rounded-md border border-border/70 bg-background px-2.5 py-1 text-[11.5px] text-foreground transition-colors hover:bg-accent active:bg-[var(--bg-active)]"
+                onClick={() => window.tz.winClose()}>关闭</button>
             </div>
           </div>
         )}
@@ -199,7 +234,7 @@ export default function TaskWindow() {
       </footer>
       {/* 终态提示:成功时短暂显示后自动关窗;失败/取消保留 */}
       <div className="h-[22px] shrink-0 bg-secondary pb-1 text-center text-[11.5px] leading-none text-muted-foreground">
-        {allSettled ? (jobs.every((j) => j.status === 'done') ? '已完成，窗口即将关闭…' : '全部任务已结束') : ''}
+        {allSettled && !allDone ? '全部任务已结束' : ''}
       </div>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
@@ -224,22 +259,25 @@ function TaskRow({ ev, elapsed, paused }: { ev: ProgressEvent; elapsed: number; 
   const done = ev.status === 'done';
   const failed = !running && !done;
   const indet = running && ev.percent < 0;
-  const p = ev.percent >= 0 ? Math.min(100, ev.percent) : 0;
+  const p = done ? 100 : ev.percent >= 0 ? Math.min(100, ev.percent) : 0;
   const pctText = !running ? (done ? '100%' : ev.status === 'cancelled' ? '已取消' : '失败') : indet ? '—' : `${p}%`;
+  const fill = done ? 'bg-emerald-500'
+    : failed ? 'bg-destructive'
+      : 'bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))]';
   const fileLine = running ? (ev.file || `${meta.run.replace('正在', '')}准备中…`)
     : done ? (ev.message || `${meta.done}完成`)
       : (ev.message || (ev.status === 'cancelled' ? '任务已取消' : '任务失败'));
   return (
     <div className={cn('leading-tight', failed && 'text-destructive')}>
       <div className="mb-1 flex items-baseline justify-between text-[12px]">
-        <span className={cn('font-semibold tabular-nums', running && 'text-primary')}>{pctText}{running && paused && <span className="ml-1.5 rounded bg-[var(--warn-soft)] px-1.5 py-px text-[10px] font-medium text-[color:var(--warn)]">已暂停</span>}</span>
+        <span className={cn('font-semibold tabular-nums', running && 'text-primary', done && 'text-emerald-600 dark:text-emerald-400')}>{pctText}{running && paused && <span className="ml-1.5 rounded bg-[var(--warn-soft)] px-1.5 py-px text-[10px] font-medium text-[color:var(--warn)]">已暂停</span>}</span>
         <span className="text-[11px] tabular-nums text-muted-foreground">已用 {fmtElapsed(elapsed)}</span>
       </div>
       <div className="relative h-[12px] overflow-hidden rounded-full bg-muted">
         {indet ? (
           <i className="absolute inset-y-0 left-[-34%] h-full w-[34%] rounded-full bg-primary/30 animate-[tw-indet_1.4s_ease-in-out_infinite]" />
         ) : (
-          <i className="relative h-full rounded-full bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))] transition-[width] duration-300 ease-out"
+          <i className={cn('relative block h-full rounded-full transition-[width] duration-300 ease-out', fill)}
             style={{ width: `${p}%` }}>
             {running && !paused && <i className="tw-shimmer pointer-events-none absolute inset-0" />}
           </i>
