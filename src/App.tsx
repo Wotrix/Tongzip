@@ -310,22 +310,22 @@ function Shell() {
 
   /* ---------- shell / 双击 启动指令 ---------- */
   /* coldStart:仅冷启动载荷(getLaunchPayload)会自动折叠侧边栏;运行中二次实例移交不折叠 */
-  const handlePayload = useCallback((p: { kind: 'archive' | 'compress'; paths: string[]; token?: string }, coldStart = false, dblOverride?: Settings['dblClickAction']) => {
+  const handlePayload = useCallback(async (p: { kind: 'archive' | 'compress'; paths: string[]; token?: string }, coldStart = false, dblOverride?: Settings['dblClickAction']) => {
     const flag = p.paths.find((x) => x.startsWith('--'));
     const real = p.paths.filter((x) => !x.startsWith('--'));
     if (p.kind === 'archive') {
       const archive = real[0];
       if (!archive) return;
-      if (flag === '--auto-extract') void quickExtract(archive, false);
-      else if (flag === '--extract-here') void quickExtract(archive, true);
+      if (flag === '--auto-extract') await quickExtract(archive, false);
+      else if (flag === '--extract-here') await quickExtract(archive, true);
       else if (flag === '--extract-dialog') setExtract({ archive, entries: [] });
       else {
         if (coldStart && !sbTouched.current) setSbHidden(true);
         /* 兑现设置项 dblClickAction:冷启动时用刚读到设置值,避免 settings effect 与载荷竞态取到默认 open */
         const action = dblOverride ?? dblAction;
-        if (action === 'quickExtract') void quickExtract(archive);
+        if (action === 'quickExtract') await quickExtract(archive);
         else if (action === 'extractDialog') setExtract({ archive, entries: [] });
-        else void openInTab(archive, undefined, true);
+        else await openInTab(archive, undefined, true);
       }
     } else {
       /* ISS-11:格式 token 走 shared 协议表(shell 命令面/主进程/渲染层单一真相);
@@ -363,7 +363,7 @@ function Shell() {
         const action = s.dblClickAction ?? 'open';
         const flag = p?.paths.find((x) => x.startsWith('--'));
         if (p && p.kind === 'archive' && !flag && action === 'open') setColdFocus(true);
-        if (p) handlePayload(p, true, s.dblClickAction);
+        if (p) await handlePayload(p, true, s.dblClickAction);
       } finally {
         setBootReady(true);
       }
@@ -371,7 +371,7 @@ function Shell() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* 运行中 second-instance 移交:与冷启动分开订阅,不重复读取初始载荷 */
-  useEffect(() => window.tz.onLaunch(handlePayload), [handlePayload]);
+  useEffect(() => window.tz.onLaunch((p) => { void handlePayload(p); }), [handlePayload]);
 
   /* 自动更新全局提示：后台检查/下载完成时给用户回音；设置页只展示详细进度 */
   useEffect(() => window.tz.onUpdateEvent((ev) => {
