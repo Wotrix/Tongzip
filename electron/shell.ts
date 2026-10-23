@@ -107,23 +107,23 @@ function extractItems(o: ContextMenuSettings): ItemDef[] {
  * 结构铁律:每个菜单项是独立子键 shell\TongZip\shell\<ItemKey>,
  *   子键默认值/MUIVerb = 显示名,子键\command 默认值 = 命令行。
  *   (写成 command\<label> 或漏掉中间的 shell 层都是无效结构,资源管理器不会渲染任何项)
- * 父键必须带 SubCommands(REG_SZ):Windows 11 新式菜单据此判定「这是子菜单」。
- *   值必须是**分号分隔的子项键名**(如 Compress7z;CompressZip;...),不能为空；
- *   空值在 Windows 11 26H1 实测只画箭头、展开后没有任何条目。
- * MultipleExtensions + %V 让多选文件时一次唤起;items 为空则整个不建。
+ * 父键必须写一个**空值** SubCommands(REG_SZ),与系统可展开的 hash 菜单一致;
+ *   子动词全部放在 shell\<ItemKey> 下。Win11 26H1 下:
+ *   - 没有 SubCommands 值 / 空值但子动词直接挂父键 → 只画箭头不展开;
+ *   - 非空 SubCommands 列表也可能按错误路径解析;
+ *   - 空值 SubCommands + shell\<verb> 才是可展开结构。
+ * 子动词只写 MUIVerb + command(与 hash 同形);不写 ExtendedCommandLine/MultipleExtensions,
+ *   这两个值在 Win11 26H1 下会让级联项被当作叶子处理。items 为空则整个不建。
  */
 async function writeMenu(base: string, items: ItemDef[], cmd0: string): Promise<void> {
   if (!items.length) return;
   await reg('add', base, '/v', 'MUIVerb', '/d', 'TongZip', '/f');
   await reg('add', base, '/v', 'Icon', '/d', appIcon(), '/f');
-  await reg('add', base, '/v', 'SubCommands', '/t', 'REG_SZ', '/d', items.map((i) => i.key).join(';'), '/f');
-  await reg('add', base, '/v', 'MultipleExtensions', '/t', 'REG_SZ', '/d', '', '/f');
+  await reg('add', base, '/v', 'SubCommands', '/t', 'REG_SZ', '/d', '', '/f');
   for (const i of items) {
     const dir = `${base}\\shell\\${i.key}`;
     await reg('add', dir, '/v', 'MUIVerb', '/d', i.label, '/f');
     await reg('add', `${dir}\\command`, '/v', '', '/d', `${cmd0} ${i.args}`, '/f');
-    /* Shift 右键(扩展命令)时 %V 展开为全部选中项 */
-    await reg('add', dir, '/v', 'ExtendedCommandLine', '/d', `${cmd0} ${i.args.replace('%1', '%V')}`, '/f');
   }
 }
 
