@@ -29,11 +29,11 @@ export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNew
           return (
             <div key={t.id}
               className={cn(
-                'group/tab relative flex h-7 w-[150px] min-w-[92px] shrink-0 cursor-pointer items-center gap-1.5 select-none rounded-full pl-2.5 pr-1.5 text-xs',
+                'group/tab relative flex h-7 w-[150px] min-w-[92px] shrink-0 cursor-pointer items-center gap-1.5 select-none rounded-full border border-border/70 pl-2.5 pr-1.5 text-xs',
                 'transition-colors duration-150',
                 'bg-secondary/60 text-muted-foreground hover:bg-secondary-foreground/[.09] hover:text-foreground active:bg-secondary-foreground/[.14]',
-                /* 活动标签:浅强调色胶囊(参考图淡紫底),靠底色/描边/字重区分,不压顶缘指示线 */
-                on && 'border border-primary/15 bg-primary/[.08] font-medium text-foreground hover:bg-primary/[.12] active:bg-primary/[.16]',
+                /* 活动标签:浅强调色胶囊+明确描边,与未激活标签拉开层级 */
+                on && 'border-primary/35 bg-primary/[.10] font-medium text-foreground shadow-sm hover:bg-primary/[.12] active:bg-primary/[.16]',
               )}
               title={t.archive || t.dir}
               onClick={() => onSelect(t.id)}

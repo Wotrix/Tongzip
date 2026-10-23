@@ -614,7 +614,7 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
           })}
         </div>
         {/* tb-search 类名 = App.tsx Ctrl+F 聚焦选择器钩子,不承载样式 */}
-        <div className="tb-search ml-auto flex h-7 min-w-[140px] max-w-[260px] flex-1 basis-0 items-center gap-[7px] rounded-[14px] border border-transparent bg-background px-2.5 text-muted-foreground transition-[border-color,box-shadow] focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--ring)]" title="搜索压缩包内全部条目 (Ctrl+F)">
+        <div className="tb-search ml-auto flex h-7 min-w-[140px] max-w-[260px] flex-1 basis-0 items-center gap-[7px] rounded-[14px] border border-border/80 bg-background px-2.5 text-muted-foreground transition-[border-color,box-shadow] hover:border-input focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--ring)]" title="搜索压缩包内全部条目 (Ctrl+F)">
           <IconSearch className="size-3.5 shrink-0" />
           <Input
             value={query}
