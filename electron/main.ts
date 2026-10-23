@@ -442,14 +442,14 @@ function installIpc(): void {
       const conflicts = await extractConflicts(job);
       if (conflicts.length) return { conflicts };
     }
-    /* 解压完成自动新开浏览窗口直达目标目录(Bandizip 式默认行为):
+    /* 解压完成用系统资源管理器打开目标位置(用户要求:不要自动开应用内浏览窗口);
        包名与目标文件夹同名 = 解进了新建同名文件夹,展示其父级才能看到新文件夹 */
     const wrapSend: (ev: ProgressEvent) => void = (ev) => {
       if (ev.status === 'done' && ev.kind === 'extract') {
         const dest = job.dest.replace(/\\/g, '/').replace(/\/+$/, '');
         const stem = path.basename(job.archive).replace(/\.[^.]+$/, '');
         const shown = path.basename(dest).toLowerCase() === stem.toLowerCase() ? path.dirname(dest) : dest;
-        openBrowseWindow(shown);
+        void shell.openPath(shown);
       }
       send(ev);
     };
