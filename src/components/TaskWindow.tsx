@@ -8,7 +8,7 @@ import type { JobKind, ProgressEvent } from '@shared/types';
 import AppLogo from './AppLogo';
 import {
   IconArchive, IconCheckCircle, IconClock, IconClose, IconFile, IconFolderOpen,
-  IconMax, IconMin, IconWarn,
+  IconMax, IconMin, IconReveal, IconWarn,
 } from './icons';
 import { basename } from '../lib/format';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,7 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 export default function TaskWindow() {
   const [jobs, setJobs] = useState<ProgressEvent[]>([]);
   const [paths, setPaths] = useState<Record<string, { archive?: string; output?: string; dest?: string }>>({});
+  const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const startedAt = useRef(new Map<string, number>());
   const [, setTick] = useState(0);
 
@@ -70,12 +71,16 @@ export default function TaskWindow() {
   const allDone = allSettled && jobs.every((j) => j.status === 'done');
   const failed = allSettled && jobs.some((j) => j.status === 'error' || j.status === 'cancelled');
 
-  /* 运行中每秒刷新已用时间；全部终态后停表 */
+  /* 运行中每秒刷新已用时间；全部终态后停表并冻结完成时间 */
   useEffect(() => {
     if (!running.length) return;
     const t = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, [running.length]);
+  useEffect(() => {
+    if (allSettled) setFinishedAt((v) => v ?? Date.now());
+    else setFinishedAt(null);
+  }, [allSettled]);
 
   /* 路径登记可能晚于首事件:每次任务落定补拉 */
   useEffect(() => { if (jobs.length) void window.tz.taskPaths().then(setPaths); }, [jobs.length, allDone]);
@@ -92,7 +97,7 @@ export default function TaskWindow() {
   const filePath = kind === 'compress' ? output : archivePath;
   const displayFile = filePath ? basename(filePath) : (focus?.file || '—');
   const displayPath = kind === 'compress' ? folderPath : destPath;
-  const elapsed = focus ? Math.max(0, (Date.now() - (startedAt.current.get(focus.taskId) ?? Date.now())) / 1000) : 0;
+  const elapsed = focus ? Math.max(0, ((finishedAt ?? Date.now()) - (startedAt.current.get(focus.taskId) ?? Date.now())) / 1000) : 0;
   const pct = jobs.length === 0 ? 0
     : allDone ? 100
       : Math.floor(jobs.reduce((s, j) => s + Math.max(0, j.percent), 0) / jobs.length);
@@ -159,8 +164,8 @@ export default function TaskWindow() {
           <div className="relative h-[10px] flex-1 overflow-hidden rounded-full bg-secondary">
             <i
               className={cn(
-                'block h-full rounded-full transition-[width] duration-300 ease-out',
-                allDone ? 'bg-emerald-500' : failed ? 'bg-destructive' : 'bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))]',
+                'block h-full rounded-full bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))] transition-[width] duration-200 ease-linear',
+                failed && 'bg-destructive',
                 indet && 'w-[34%] animate-[tw-indet_1.2s_ease-in-out_infinite]',
               )}
               style={indet ? undefined : { width: `${pct}%` }}
@@ -172,14 +177,14 @@ export default function TaskWindow() {
         </div>
 
         {/* 信息卡 */}
-        <div className="mt-6 grid grid-cols-1 gap-0 overflow-hidden rounded-[14px] border border-border/70 bg-secondary/40 md:grid-cols-[1fr_210px]">
+        <div className="mt-6 grid grid-cols-1 gap-0 overflow-hidden rounded-[14px] border border-border/70 bg-secondary/40 sm:grid-cols-[1fr_200px]">
           <div className="flex min-w-0 flex-col gap-3.5 px-5 py-4">
             <InfoRow icon={<IconFile />} label={kind === 'compress' ? '压缩文件' : '解压文件'} value={displayFile} />
             <InfoRow icon={<IconFolderOpen />} label={kind === 'compress' ? '保存位置' : '解压路径'} value={displayPath ?? ''} />
             <InfoRow icon={<IconClock />} label="已用时间" value={fmtElapsed(elapsed)} />
             <InfoRow icon={<IconArchive />} label="任务数" value={`${jobs.length} 个`} />
           </div>
-          <div className="flex flex-col items-center justify-center gap-2 border-t border-border/70 px-5 py-5 text-center md:border-l md:border-t-0">
+          <div className="flex flex-col items-center justify-center gap-2 border-t border-border/70 px-5 py-5 text-center sm:border-l sm:border-t-0">
             <div className={cn(
               'grid size-10 place-items-center rounded-full text-white',
               failed ? 'bg-destructive' : allDone ? 'bg-emerald-500' : 'bg-primary',
@@ -194,15 +199,25 @@ export default function TaskWindow() {
         </div>
       </div>
 
-      {/* 完成后底部操作；运行中只保留窗控 */}
+      {/* 完成后底部：图标操作（打开目标文件夹 / 打开文件位置 / 完成） */}
       {allSettled && (
-        <footer className="flex h-[72px] shrink-0 items-center justify-between border-t border-border/70 px-8">
-          <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/80 bg-background px-4 text-[13px] text-foreground transition-colors hover:bg-accent active:bg-[var(--bg-active)] disabled:cursor-default disabled:opacity-45"
-            disabled={!folderPath} onClick={() => folderPath && void window.tz.openPath(folderPath)}>
-            <IconFolderOpen className="size-4" />打开文件夹
+        <footer className="flex h-[64px] shrink-0 items-center gap-1.5 border-t border-border/70 px-5">
+          <button className="grid size-9 place-items-center rounded-lg border border-border/80 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] disabled:cursor-default disabled:opacity-40"
+            title="打开文件夹" disabled={!folderPath} onClick={() => folderPath && void window.tz.openPath(folderPath)}>
+            <IconFolderOpen className="size-[17px]" />
           </button>
-          <button className="inline-flex h-9 min-w-[92px] items-center justify-center rounded-lg bg-primary px-5 text-[13px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:bg-primary/80"
-            onClick={() => window.tz.winClose()}>{failed ? '关闭' : '完成'}</button>
+          <button className="grid size-9 place-items-center rounded-lg border border-border/80 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] disabled:cursor-default disabled:opacity-40"
+            title="打开文件位置" disabled={!filePath} onClick={() => filePath && void window.tz.revealInExplorer(filePath)}>
+            <IconReveal className="size-[17px]" />
+          </button>
+          <div className="ml-auto">
+            <button className={cn(
+              'grid size-9 place-items-center rounded-lg text-white transition-colors active:scale-[.97]',
+              failed ? 'bg-destructive hover:bg-destructive/90' : 'bg-primary hover:bg-primary/90',
+            )} title={failed ? '关闭' : '完成'} onClick={() => window.tz.winClose()}>
+              {failed ? <IconClose className="size-[17px]" /> : <IconCheckCircle className="size-[17px]" />}
+            </button>
+          </div>
         </footer>
       )}
     </div>
