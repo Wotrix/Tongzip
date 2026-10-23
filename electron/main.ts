@@ -274,10 +274,10 @@ function openTaskWindow(): void {
     return;
   }
   taskWin = new BrowserWindow({
-    width: 460,
-    height: 260,
-    minWidth: 380,
-    minHeight: 210,
+    width: 760,
+    height: 520,
+    minWidth: 640,
+    minHeight: 460,
     show: false,
     frame: false,
     title: 'TongZip 任务',
