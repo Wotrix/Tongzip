@@ -194,7 +194,9 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
         const restored: DoneJob[] = list.map((t) => ({
           taskId: t.id, kind: t.kind,
           label: t.label || (t.src || t.out || '').replace(/^.*[\\/]/, ''),
-          path: t.src, status: t.status === 'retryable' || t.status === 'interrupted' ? t.status
+          /* 压缩任务没有 src(源清单在主进程不掌握),产物在 out;恢复时取 src ?? out,
+             否则重启后「最近任务」缺 path,悬停打开位置图标不渲染、右键项被禁用 */
+          path: t.src ?? t.out, status: t.status === 'retryable' || t.status === 'interrupted' ? t.status
             : t.status === 'done' ? 'done' as const : 'error' as const,
           code: t.errCode, at: t.finishedAt ?? t.createdAt, txnRolledBack: t.txnRolledBack,
         })).filter((h) => !prev.some((p) => p.taskId === h.taskId));
