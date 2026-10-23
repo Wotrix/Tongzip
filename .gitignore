@@ -4,6 +4,7 @@ dist-electron/
 release/
 release-rc/
 .tmp/
+docs/phase4/
 _ref_nanazip/
 *.log
 
