@@ -107,15 +107,16 @@ function extractItems(o: ContextMenuSettings): ItemDef[] {
  * 结构铁律:每个菜单项是独立子键 shell\TongZip\<ItemKey>,
  *   子键默认值/MUIVerb = 显示名,子键\command 默认值 = 命令行。
  *   (写成 command\<label> 是无效结构,资源管理器不会渲染任何项)
- * 父键必须带 SubCommands(REG_SZ, 可空):Windows 11 新式菜单据此判定「这是子菜单」,
- *   缺省则即便子项齐全也会被折叠成单个叶子项(与系统内置「校验文件 Hash」同构)。
+ * 父键必须带 SubCommands(REG_SZ):Windows 11 新式菜单据此判定「这是子菜单」。
+ *   值必须是**分号分隔的子项键名**(如 Compress7z;CompressZip;...),不能为空；
+ *   空值在 Windows 11 26H1 实测只画箭头、展开后没有任何条目。
  * MultipleExtensions + %V 让多选文件时一次唤起;items 为空则整个不建。
  */
 async function writeMenu(base: string, items: ItemDef[], cmd0: string): Promise<void> {
   if (!items.length) return;
   await reg('add', base, '/v', 'MUIVerb', '/d', 'TongZip', '/f');
   await reg('add', base, '/v', 'Icon', '/d', appIcon(), '/f');
-  await reg('add', base, '/v', 'SubCommands', '/t', 'REG_SZ', '/d', '', '/f');
+  await reg('add', base, '/v', 'SubCommands', '/t', 'REG_SZ', '/d', items.map((i) => i.key).join(';'), '/f');
   await reg('add', base, '/v', 'MultipleExtensions', '/t', 'REG_SZ', '/d', '', '/f');
   for (const i of items) {
     const dir = `${base}\\${i.key}`;
