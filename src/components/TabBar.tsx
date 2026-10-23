@@ -1,6 +1,6 @@
 /**
  * 多标签栏 — 浏览器风格胶囊标签(用户参考图):全圆角药丸 + 左图标 + 内联关闭钮,
- * 活动标签浅强调色底;右侧为常驻搜索框(搜索当前压缩包,与页内搜索框同一状态),尾部「+」。
+ * 活动标签浅强调色底;搜索框只保留页内一份(压缩包/文件夹各自上下文),尾部「+」。
  * 溢出横向滚动;中键可关闭。
  */
 import { useState } from 'react';
@@ -11,12 +11,9 @@ import { cn } from '@/lib/utils';
 
 export interface TabItem { id: string; archive: string; dir?: string }
 
-export default function TabBar({ tabs, activeId, query, onSearch, onSelect, onClose, onNew, onNewFolder }: {
+export default function TabBar({ tabs, activeId, onSelect, onClose, onNew, onNewFolder }: {
   tabs: TabItem[];
   activeId: string | null;
-  /** 当前活动标签的搜索词(提升自 TabView,胶囊条搜索框与页内搜索框共用) */
-  query: string;
-  onSearch(v: string): void;
   onSelect(id: string): void;
   onClose(id: string): void;
   onNew(): void;
@@ -53,20 +50,7 @@ export default function TabBar({ tabs, activeId, query, onSearch, onSelect, onCl
           );
         })}
       </div>
-      {/* 常驻搜索框:过滤当前活动标签内容;id 供 Ctrl+F 聚焦 */}
-      <div className="ml-auto flex h-7 w-[230px] shrink-0 items-center gap-2 rounded-full border border-border/70 bg-secondary/50 px-2.5 text-muted-foreground transition-colors focus-within:border-primary/40 focus-within:bg-background">
-        <IconSearch className="size-[13px] shrink-0" />
-        <input id="tz-tab-search" value={query} placeholder="搜索当前压缩包中的文件…" spellCheck={false}
-          onChange={(e) => onSearch(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Escape') onSearch(''); }}
-          className="h-full w-auto min-w-0 flex-1 border-0 bg-transparent p-0 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground" />
-        {query && (
-          <button className="grid size-[16px] shrink-0 place-items-center rounded-full hover:bg-foreground/10" title="清空搜索 (Esc)" onClick={() => onSearch('')}>
-            <IconClose className="size-[10px]" />
-          </button>
-        )}
-      </div>
-      <button className="grid size-[26px] shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground active:bg-secondary-foreground/[.14]" title="新建标签 (Ctrl+T)" onClick={(e) => {
+      <button className="ml-auto grid size-[26px] shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground active:bg-secondary-foreground/[.14]" title="新建标签 (Ctrl+T)" onClick={(e) => {
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
         setAddMenu({ x: r.left, y: r.bottom + 4 });
       }}>

@@ -498,14 +498,12 @@ function Shell() {
       }
       /* Ctrl+E 已下放到 Browser(需感知选中条目:选中=解压选中,无选中=解压全部) */
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-        /* 搜索只在打开压缩包后可用;其他页面不响应 */
+        /* 搜索只在打开压缩包/文件夹后可用;聚焦页内唯一搜索框(独立窗口同款) */
         if (view === 'browse') {
           e.preventDefault();
-          /* 文件夹标签:聚焦页内搜索框;压缩包标签:聚焦标签条常驻搜索框 */
-          const folderTab = activeId ? tabs.find((t) => t.id === activeId)?.dir : undefined;
           setTimeout(() => {
-            if (folderTab) document.querySelector<HTMLInputElement>('.tab-slot:not([hidden]) .tb-search input')?.focus();
-            else { const el = document.getElementById('tz-tab-search') as HTMLInputElement | null; el?.focus(); el?.select(); }
+            const el = document.querySelector<HTMLInputElement>('.tab-slot:not([hidden]) .tb-search input');
+            el?.focus(); el?.select();
           }, 60);
         }
       }
@@ -575,8 +573,7 @@ function Shell() {
         <div className="content-panel">
         {view === 'browse' && tabs.length > 0 ? (
           <>
-            <TabBar tabs={tabs} activeId={activeId} query={activeId ? tabQueries[activeId] ?? '' : ''}
-              onSearch={(v) => { if (activeId) setTabQuery(activeId, v); }}
+            <TabBar tabs={tabs} activeId={activeId}
               onSelect={(id) => setActiveId(id)}
               onClose={(id) => closeTab(id)}
               onNew={() => void pickAndOpen()}
