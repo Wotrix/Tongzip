@@ -5,6 +5,7 @@ release/
 release-rc/
 .tmp/
 docs/phase4/
+scripts/make-assets.ps1
 _ref_nanazip/
 *.log
 
