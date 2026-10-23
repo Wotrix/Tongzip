@@ -104,9 +104,9 @@ function extractItems(o: ContextMenuSettings): ItemDef[] {
 
 /**
  * 在 shell\TongZip 下写一组真实子菜单项(Bandizip 式二级上下文菜单)。
- * 结构铁律:每个菜单项是独立子键 shell\TongZip\<ItemKey>,
+ * 结构铁律:每个菜单项是独立子键 shell\TongZip\shell\<ItemKey>,
  *   子键默认值/MUIVerb = 显示名,子键\command 默认值 = 命令行。
- *   (写成 command\<label> 是无效结构,资源管理器不会渲染任何项)
+ *   (写成 command\<label> 或漏掉中间的 shell 层都是无效结构,资源管理器不会渲染任何项)
  * 父键必须带 SubCommands(REG_SZ):Windows 11 新式菜单据此判定「这是子菜单」。
  *   值必须是**分号分隔的子项键名**(如 Compress7z;CompressZip;...),不能为空；
  *   空值在 Windows 11 26H1 实测只画箭头、展开后没有任何条目。
@@ -119,7 +119,7 @@ async function writeMenu(base: string, items: ItemDef[], cmd0: string): Promise<
   await reg('add', base, '/v', 'SubCommands', '/t', 'REG_SZ', '/d', items.map((i) => i.key).join(';'), '/f');
   await reg('add', base, '/v', 'MultipleExtensions', '/t', 'REG_SZ', '/d', '', '/f');
   for (const i of items) {
-    const dir = `${base}\\${i.key}`;
+    const dir = `${base}\\shell\\${i.key}`;
     await reg('add', dir, '/v', 'MUIVerb', '/d', i.label, '/f');
     await reg('add', `${dir}\\command`, '/v', '', '/d', `${cmd0} ${i.args}`, '/f');
     /* Shift 右键(扩展命令)时 %V 展开为全部选中项 */
