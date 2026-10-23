@@ -16,7 +16,6 @@ import AppLogo from '../components/AppLogo';
 import FileGlyph from '../components/FileGlyph';
 import { ContextMenu, useToast, type CtxItem } from '../components/ui';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { cn } from '@/lib/utils';
 import { fmtBytes } from '../lib/format';
 import {
@@ -368,10 +367,11 @@ export default function FolderView({ dir, standalone = false, query: qProp, onQu
         </div>
         <div className="tb-search flex h-7 min-w-[140px] max-w-[260px] flex-1 basis-0 items-center gap-[7px] rounded-[14px] border border-border/80 bg-background px-2.5 text-muted-foreground transition-[border-color,box-shadow] hover:border-input focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--ring)]" title="搜索当前文件夹 (Ctrl+F)">
           <IconSearch className="size-3.5 shrink-0" />
-          <Input value={query} placeholder="搜索当前文件夹…"
+          <input value={query} placeholder="搜索当前文件夹…"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
-            className="h-auto w-auto min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[12.5px] text-foreground shadow-none outline-none focus-visible:border-transparent focus-visible:ring-0" />
+            spellCheck={false}
+            className="h-auto w-auto min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[12.5px] text-foreground shadow-none outline-none ring-0 focus:outline-none focus:ring-0" />
         </div>
       </div>
 

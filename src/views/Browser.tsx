@@ -14,7 +14,6 @@ import {
 import FileGlyph, { EntryGlyph } from '../components/FileGlyph';
 import { ContextMenu, PanelHandle, rubberClamp, usePanelDrag, useToast, type CtxItem } from '../components/ui';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { cn } from '@/lib/utils';
 import { fmtBytes, fmtRatio, basename, parentDir, FORMAT_LABEL } from '../lib/format';
 
@@ -616,12 +615,13 @@ export default function Browser({ info, archive, query, onSearch, actions, nav, 
         {/* tb-search 类名 = App.tsx Ctrl+F 聚焦选择器钩子,不承载样式 */}
         <div className="tb-search ml-auto flex h-7 min-w-[140px] max-w-[260px] flex-1 basis-0 items-center gap-[7px] rounded-[14px] border border-border/80 bg-background px-2.5 text-muted-foreground transition-[border-color,box-shadow] hover:border-input focus-within:border-primary focus-within:shadow-[0_0_0_3px_var(--ring)]" title="搜索压缩包内全部条目 (Ctrl+F)">
           <IconSearch className="size-3.5 shrink-0" />
-          <Input
+          <input
             value={query}
             placeholder="搜索当前压缩包中的文件…"
             onChange={(e) => onSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') onSearch(''); }}
-            className="h-auto w-auto min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[12.5px] md:text-[12.5px] text-foreground shadow-none outline-none focus-visible:border-transparent focus-visible:ring-0"
+            spellCheck={false}
+            className="h-auto w-auto min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[12.5px] text-foreground shadow-none outline-none ring-0 focus:outline-none focus:ring-0"
           />
         </div>
       </div>
