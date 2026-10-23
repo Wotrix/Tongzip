@@ -3,13 +3,14 @@
  * 进行中:进度/速度/剩余时间/暂停·继续/取消;已完成:近期历史。
  * 暂停通过主进程挂起引擎子进程实现,进度会冻结在当前百分点。
  */
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import type { JobKind } from '@shared/types';
 import { ContextMenu, useTaskHub, useToast, type DoneJob, type TrackedJob } from './ui';
 import { Button } from './ui/button';
 import {
   IconClose, IconCompress, IconDelete, IconExtract, IconTest,
   IconCheckCircle, IconWarn, IconClock, IconPause, IconPlay, IconReveal,
+  IconFolderOpen, IconCopy,
 } from './icons';
 import { fmtBytes } from '../lib/format';
 import { cn } from '@/lib/utils';
@@ -65,6 +66,46 @@ export function useTaskMenu(path?: string) {
   const menu = anchor && (
     <ContextMenu x={anchor.x} y={anchor.y} onClose={() => setAnchor(null)} items={[
       { label: '打开文件位置', icon: <IconReveal />, disabled: !path, onClick: () => { if (path) revealArchive(path, toast); } },
+    ]} />
+  );
+  const bind = {
+    onContextMenu: (e: MouseEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      setAnchor({ x: e.clientX, y: e.clientY });
+    },
+  };
+  return { menu, bind };
+}
+
+/** 已完成任务的右键菜单:与首页「最近打开」同构(打开/打开文件位置/复制路径/从最近列表移除) */
+export function useDoneTaskMenu(h: DoneJob, onOpen?: (path: string) => void) {
+  const toast = useToast();
+  const { removeHistory } = useTaskHub();
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [alive, setAlive] = useState<boolean>(!!h.path);
+  useEffect(() => {
+    let dead = false;
+    if (!h.path) { setAlive(false); return undefined; }
+    void window.tz.exists(h.path).then((ok) => { if (!dead) setAlive(ok); });
+    return () => { dead = true; };
+  }, [h.path]);
+  const p = h.path;
+  const close = () => setAnchor(null);
+  const open = () => {
+    if (!p || !onOpen) return;
+    close();
+    void window.tz.exists(p).then((ok) => {
+      if (ok) onOpen(p);
+      else toast('文件已不存在或被移除', 'err');
+    });
+  };
+  const menu = anchor && (
+    <ContextMenu x={anchor.x} y={anchor.y} onClose={close} items={[
+      { label: '打开', icon: <IconFolderOpen />, disabled: !p || !alive || !onOpen, onClick: open },
+      { label: '打开文件位置', icon: <IconReveal />, disabled: !p || !alive, onClick: () => { close(); if (p) revealArchive(p, toast); } },
+      { label: '复制文件路径', icon: <IconCopy />, disabled: !p, onClick: () => { close(); if (p) void navigator.clipboard.writeText(p).then(() => toast('已复制到剪贴板')).catch(() => toast('复制失败', 'err')); } },
+      { sep: true, label: '' },
+      { label: '从最近列表移除', icon: <IconDelete />, danger: true, onClick: () => { close(); removeHistory(h.taskId); } },
     ]} />
   );
   const bind = {
@@ -158,7 +199,7 @@ export function HistoryRow({ h, onOpen }: { h: DoneJob; onOpen?: (path: string) 
   const failed = h.status === 'error' || h.status === 'cancelled';
   const Icon = h.status === 'done' ? IconCheckCircle : interrupted || retryable ? IconClock : IconWarn;
   const toast = useToast();
-  const { menu, bind } = useTaskMenu(h.path);
+  const { menu, bind } = useDoneTaskMenu(h, onOpen);
   /* 点击行:先验存在性再在标签中打开压缩包(删除类任务的目标已消失,自然降级为 toast) */
   const openable = h.status === 'done' && !!h.path && !!onOpen;
   const openIt = () => {

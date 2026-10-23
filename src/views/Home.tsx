@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { IconArchive, IconExtract, IconFolderOpen, IconFolder, IconOpen, IconCheckCircle, IconWarn, IconClock, IconReveal, IconCopy, IconDelete } from '../components/icons';
 import FileGlyph from '../components/FileGlyph';
 import { ContextMenu, useTaskHub, useToast, type DoneJob } from '../components/ui';
-import { RunningCard, useTaskMenu, revealArchive } from '../components/TaskCenter';
+import { RunningCard, useDoneTaskMenu, revealArchive } from '../components/TaskCenter';
 import { basename, fmtBytes, parentDir } from '../lib/format';
 import { cn } from '@/lib/utils';
 
@@ -153,7 +153,7 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
             ) : (
               <>
                 {recentTasks.map((j) => <RunningCard key={j.taskId} job={j} />)}
-                {doneTasks.map((h) => <DoneTaskRow key={h.taskId + h.at} h={h} />)}
+                {doneTasks.map((h) => <DoneTaskRow key={h.taskId + h.at} h={h} onOpen={onOpen} />)}
               </>
             )}
           </section>
@@ -187,10 +187,10 @@ export default function Home({ recents, onOpen, onCompress, onCompressFolder, on
   );
 }
 
-/** 最近任务的已完成行：右键菜单 + 悬停「打开文件位置」按钮(与最近打开板块对齐) */
-function DoneTaskRow({ h }: { h: DoneJob }) {
+/** 最近任务的已完成行:右键菜单与「最近打开」同构 + 悬停「打开文件位置」按钮 */
+function DoneTaskRow({ h, onOpen }: { h: DoneJob; onOpen: (p: string) => void }) {
   const toast = useToast();
-  const { menu, bind } = useTaskMenu(h.path);
+  const { menu, bind } = useDoneTaskMenu(h, onOpen);
   return (
     <div className={cn(
       'group flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[12.5px] text-muted-foreground',

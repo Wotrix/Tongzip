@@ -90,6 +90,7 @@ const api = {
   /* 任务历史(3.4):主进程持久化+恢复状态机后的记录;清空同步落盘 */
   historyGet: (): Promise<PersistedTask[]> => ipcRenderer.invoke('tz:history-get'),
   historyClear: (): Promise<boolean> => ipcRenderer.invoke('tz:history-clear'),
+  historyRemove: (taskId: string): Promise<boolean> => ipcRenderer.invoke('tz:history-remove', taskId),
 
   /* 文件夹浏览 */
   listDir: (dir: string): Promise<IpcResult<FolderEntry[]>> => ipcRenderer.invoke('tz:dir-list', dir),

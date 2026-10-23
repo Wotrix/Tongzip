@@ -20,7 +20,7 @@ import {
   runCompress, runDelete, runExtract, runTest, totalSize,
 } from './engine';
 import {
-  backfillTaskPaths, clearTaskHistory, configureTaskHistory, flushTaskHistory, getTaskHistory, loadTaskHistory, observeTaskEvent,
+  backfillTaskPaths, clearTaskHistory, configureTaskHistory, flushTaskHistory, getTaskHistory, loadTaskHistory, observeTaskEvent, removeTaskHistory,
 } from './history';
 import { installShell, registerDefaultAppCapabilities, shellStatus, uninstallShell } from './shell';
 import { checkForUpdate, initUpdater, installUpdate, scheduleStartupCheck } from './updater';
@@ -614,6 +614,7 @@ function installIpc(): void {
   /* 任务历史(3.4):跨会话查看;清空同步落盘。返回主进程恢复状态机处理后的记录 */
   ipcMain.handle('tz:history-get', () => getTaskHistory());
   ipcMain.handle('tz:history-clear', () => { clearTaskHistory(); return true; });
+  ipcMain.handle('tz:history-remove', (_e, taskId: string) => removeTaskHistory(taskId));
 
   /* 文件夹浏览:目录读取 / 默认程序打开 / 移入回收站 / 新开浏览窗口 */
   ipcMain.handle('tz:dir-list', wrap((dir: string): FolderEntry[] => {

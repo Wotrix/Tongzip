@@ -62,6 +62,15 @@ export function clearTaskHistory(): void {
   scheduleWrite();
 }
 
+/** 移除单条历史(最近任务右键「从最近列表移除」);taskId 唯一,找不到返回 false */
+export function removeTaskHistory(taskId: string): boolean {
+  const i = cache.findIndex((t) => t.id === taskId);
+  if (i < 0) return false;
+  cache.splice(i, 1);
+  scheduleWrite();
+  return true;
+}
+
 /* ---------------- 版本化解析 ---------------- */
 
 const KINDS = new Set(['compress', 'extract', 'test', 'delete']);

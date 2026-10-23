@@ -144,8 +144,9 @@ interface TaskHubValue {
   history: DoneJob[];
   track(taskId: string, kind: JobKind, onSettled?: (j: TrackedJob) => void, meta?: { label?: string; path?: string; totalBytes?: number }): void;
   clearHistory(): void;
+  removeHistory(taskId: string): void;
 }
-const TaskHubCtx = createContext<TaskHubValue>({ jobs: [], history: [], track: () => undefined, clearHistory: () => undefined });
+const TaskHubCtx = createContext<TaskHubValue>({ jobs: [], history: [], track: () => undefined, clearHistory: () => undefined, removeHistory: () => undefined });
 export const useTaskHub = () => useContext(TaskHubCtx);
 
 /** @deprecated 旧命名兼容 */
@@ -255,8 +256,14 @@ export function TaskHubProvider({ children }: { children: ReactNode }) {
     void window.tz.historyClear?.();
   }, []);
 
+  /* 单条历史移除:渲染层即时收起,主进程同步落盘,避免重启后复活 */
+  const removeHistory = useCallback((taskId: string) => {
+    setHistory((prev) => prev.filter((h) => h.taskId !== taskId));
+    void window.tz.historyRemove?.(taskId);
+  }, []);
+
   return (
-    <TaskHubCtx.Provider value={{ jobs, history, track, clearHistory }}>
+    <TaskHubCtx.Provider value={{ jobs, history, track, clearHistory, removeHistory }}>
       {children}
     </TaskHubCtx.Provider>
   );

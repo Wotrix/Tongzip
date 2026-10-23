@@ -52,6 +52,7 @@ declare global {
       /** 持久化任务历史(已过启动恢复状态机);清空同步落盘 */
       historyGet(): Promise<PersistedTask[]>;
       historyClear(): Promise<boolean>;
+      historyRemove(taskId: string): Promise<boolean>;
       listDir(dir: string): Promise<IpcResult<FolderEntry[]>>;
       openPath(p: string): Promise<IpcResult<void>>;
       trash(paths: string[]): Promise<IpcResult<void>>;
