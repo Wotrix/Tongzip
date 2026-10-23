@@ -442,18 +442,9 @@ function installIpc(): void {
       const conflicts = await extractConflicts(job);
       if (conflicts.length) return { conflicts };
     }
-    /* 解压完成用系统资源管理器打开目标位置(用户要求:不要自动开应用内浏览窗口);
-       包名与目标文件夹同名 = 解进了新建同名文件夹,展示其父级才能看到新文件夹 */
-    const wrapSend: (ev: ProgressEvent) => void = (ev) => {
-      if (ev.status === 'done' && ev.kind === 'extract') {
-        const dest = job.dest.replace(/\\/g, '/').replace(/\/+$/, '');
-        const stem = path.basename(job.archive).replace(/\.[^.]+$/, '');
-        const shown = path.basename(dest).toLowerCase() === stem.toLowerCase() ? path.dirname(dest) : dest;
-        void shell.openPath(shown);
-      }
-      send(ev);
-    };
-    return runExtract(job, wrapSend);
+    /* 解压完成不自动打开任何窗口(用户要求);需要时由任务窗「打开目标文件夹」
+       或应用内「在资源管理器中打开」手动走系统资源管理器 */
+    return runExtract(job, send);
   }));
   ipcMain.handle('tz:test', wrap((a: { archive: string; password?: string }) => {
     assertZipPw(a.archive, a.password);
