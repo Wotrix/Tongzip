@@ -275,9 +275,9 @@ function openTaskWindow(): void {
   }
   taskWin = new BrowserWindow({
     width: 460,
-    height: 400,
+    height: 260,
     minWidth: 380,
-    minHeight: 220,
+    minHeight: 210,
     show: false,
     frame: false,
     title: 'TongZip 任务',
@@ -444,6 +444,7 @@ function installIpc(): void {
     }
     /* 解压完成不自动打开任何窗口(用户要求);需要时由任务窗「打开目标文件夹」
        或应用内「在资源管理器中打开」手动走系统资源管理器 */
+    openTaskWindow();
     return runExtract(job, send);
   }));
   ipcMain.handle('tz:test', wrap((a: { archive: string; password?: string }) => {

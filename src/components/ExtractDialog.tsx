@@ -69,7 +69,7 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
     void window.tz.taskPathSet(r.data.taskId, { archive, dest: dest.replace(/\\/g, '/') });
     api.trackTask(r.data.taskId, 'extract', async (j) => {
       setBusy(false);
-      if (j.status === 'done') { toast(`已解压到 ${dest}`); close(); }
+      if (j.status === 'done') { toast(`已解压到 ${dest}`); }
       else if (j.status === 'error') {
         /* 机读码优先;includes 兜底兼容第三方引擎把密码错误写进自由文案的场景 */
         if (j.code === ERR.NEED_PASSWORD || j.message?.includes('密码')) {
@@ -81,6 +81,8 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
         } else toast(j.message ?? '解压失败', 'err');
       }
     }, { label: basename(archive), path: archive, totalBytes });
+    // 任务已启动:解压对话框收起,进度/错误统一由独立任务窗口呈现
+    close();
   };
 
   return (

@@ -159,23 +159,19 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
     };
     const r = await window.tz.compress(job);
     if (!r.ok) { setBusy(false); toast(r.message, 'err'); return; }
-    // 压缩启动即弹独立任务窗口(已在跑的任务一并展示,终态后留存供回看,手动关闭)
+    // 压缩启动即弹独立任务窗口；创建对话框立即收起，进度/错误统一在任务窗口呈现
     void window.tz.taskWindowOpen();
-    // 路径登记:任务窗「打开文件位置/目标文件夹」需要输出文件坐标
     void window.tz.taskPathSet(r.data.taskId, { output });
-    // 任务中心展示总体积(大目录递归求和可能稍慢,不阻塞任务启动)
-    void window.tz.totalSize(items).then((sz) => {
-      api.trackTask(r.data.taskId, 'compress', (j) => {
-        setBusy(false);
-        if (j.status === 'done') {
-          toast(appendTo ? `已添加到 ${basename(output)}` : `已生成 ${basename(output)}`);
-          if (appendTo) api.refreshArchive();
-          close();
-        } else if (j.status === 'error') {
-          toast(j.message ?? '压缩失败', 'err');
-        }
-      }, { label: basename(output), path: output, totalBytes: sz.ok ? sz.data : undefined });
-    });
+    api.trackTask(r.data.taskId, 'compress', (j) => {
+      setBusy(false);
+      if (j.status === 'done') {
+        toast(appendTo ? `已添加到 ${basename(output)}` : `已生成 ${basename(output)}`);
+        if (appendTo) api.refreshArchive();
+      } else if (j.status === 'error') {
+        toast(j.message ?? '压缩失败', 'err');
+      }
+    }, { label: basename(output), path: output });
+    close();
   };
 
   return (
