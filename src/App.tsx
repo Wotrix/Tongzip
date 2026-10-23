@@ -99,19 +99,28 @@ function Shell() {
   const [sbCollapsed, setSbCollapsed] = useState(false);
   const [sbW, setSbW] = useState(156);
   const sbTouched = useRef(false);
+  /** 首帧门:settings + 冷启动载荷就绪前不渲染侧栏,避免「先显示再收起」的隐藏动画 */
+  const [bootReady, setBootReady] = useState(false);
+  /** 冷启动打开压缩包:标签/浏览视图是异步建立的,首帧 view 仍可能为 home;
+      用该标记让侧栏从第一帧就保持 0 宽,进入 browse 后交给 sbHidden 接管 */
+  const [coldFocus, setColdFocus] = useState(false);
   /* 手动唤回(Alt+B/工具栏)时顺带解除收起态,保证总有出路 */
   const toggleSidebar = useCallback(() => {
     sbTouched.current = true;
+    setColdFocus(false);
     setSbCollapsed(false);
     void window.tz.setSettings({ sidebarCollapsed: false });
     setSbHidden((v) => !v);
   }, []);
   const collapseSidebar = useCallback(() => {
+    sbTouched.current = true;
+    setColdFocus(false);
     setSbCollapsed(true);
     setSbHidden(false); // 收起态自带竖条恢复入口,不再叠加「完全隐藏」语义
     void window.tz.setSettings({ sidebarCollapsed: true });
   }, []);
   const expandSidebar = useCallback(() => {
+    setColdFocus(false);
     setSbCollapsed(false);
     void window.tz.setSettings({ sidebarCollapsed: false });
   }, []);
@@ -129,22 +138,8 @@ function Shell() {
     refreshArchive: () => { void reloadRef.current?.(); },
   };
 
-  /* ---------- 初始设置(最近打开 + 强调色 + 双击动作/记住密码开关) ---------- */
+  /* 设置页实时切换时同步开关;初始设置与冷启动载荷统一在 boot effect 里先读后渲染 */
   useEffect(() => {
-    void (async () => {
-      const s = await window.tz.getSettings();
-      setRecents(s.recentArchives ?? []);
-      setDblAction(s.dblClickAction ?? 'open');
-      rememberPw.current = !!s.rememberPassword;
-      if (!s.rememberPassword) pwCache.current.clear();
-      setSbCollapsed(!!s.sidebarCollapsed);
-      if (typeof s.sidebarWidth === 'number' && Number.isFinite(s.sidebarWidth)) {
-        setSbW(Math.min(SB_MAX, Math.max(SB_MIN, Math.round(s.sidebarWidth))));
-      }
-      const acc = (s.accent as string) === 'purple' ? 'violet' : s.accent;
-      if (acc && acc !== 'violet') document.documentElement.dataset.accent = acc;
-    })();
-    /* 设置页实时切换时同步开关;关掉瞬间清空已缓存密码,兑现「关闭应用后清除/仅本会话」承诺 */
     const onPatched = (e: Event) => {
       const p = (e as CustomEvent<Partial<Settings>>).detail;
       if ('rememberPassword' in p) {
@@ -315,7 +310,7 @@ function Shell() {
 
   /* ---------- shell / 双击 启动指令 ---------- */
   /* coldStart:仅冷启动载荷(getLaunchPayload)会自动折叠侧边栏;运行中二次实例移交不折叠 */
-  const handlePayload = useCallback((p: { kind: 'archive' | 'compress'; paths: string[]; token?: string }, coldStart = false) => {
+  const handlePayload = useCallback((p: { kind: 'archive' | 'compress'; paths: string[]; token?: string }, coldStart = false, dblOverride?: Settings['dblClickAction']) => {
     const flag = p.paths.find((x) => x.startsWith('--'));
     const real = p.paths.filter((x) => !x.startsWith('--'));
     if (p.kind === 'archive') {
@@ -326,9 +321,10 @@ function Shell() {
       else if (flag === '--extract-dialog') setExtract({ archive, entries: [] });
       else {
         if (coldStart && !sbTouched.current) setSbHidden(true);
-        /* 兑现设置项 dblClickAction:资源管理器双击/打开方式进入此分支,按用户选择路由 */
-        if (dblAction === 'quickExtract') void quickExtract(archive);
-        else if (dblAction === 'extractDialog') setExtract({ archive, entries: [] });
+        /* 兑现设置项 dblClickAction:冷启动时用刚读到设置值,避免 settings effect 与载荷竞态取到默认 open */
+        const action = dblOverride ?? dblAction;
+        if (action === 'quickExtract') void quickExtract(archive);
+        else if (action === 'extractDialog') setExtract({ archive, entries: [] });
         else void openInTab(archive, undefined, true);
       }
     } else {
@@ -347,13 +343,35 @@ function Shell() {
     }
   }, [openInTab, quickExtract, dblAction, toast]);
 
+  /* 首帧 boot:先读 settings + 冷启动载荷,把侧栏初始态(隐藏/竖条/宽度)一次性设好再放行渲染;
+     避免「先显示完整侧栏再收起」的隐藏动画,也避免每次启动都从展开态滑到竖条。 */
   useEffect(() => {
     void (async () => {
-      const p = await window.tz.getLaunchPayload();
-      if (p) handlePayload(p, true);
+      try {
+        const [s, p] = await Promise.all([window.tz.getSettings(), window.tz.getLaunchPayload()]);
+        setRecents(s.recentArchives ?? []);
+        setDblAction(s.dblClickAction ?? 'open');
+        rememberPw.current = !!s.rememberPassword;
+        if (!s.rememberPassword) pwCache.current.clear();
+        setSbCollapsed(!!s.sidebarCollapsed);
+        if (typeof s.sidebarWidth === 'number' && Number.isFinite(s.sidebarWidth)) {
+          setSbW(Math.min(SB_MAX, Math.max(SB_MIN, Math.round(s.sidebarWidth))));
+        }
+        const acc = (s.accent as string) === 'purple' ? 'violet' : s.accent;
+        if (acc && acc !== 'violet') document.documentElement.dataset.accent = acc;
+        /* 冷启动「打开压缩包」会在异步建标签后才切 browse;先在首帧保持隐藏,避免 156→0 动画 */
+        const action = s.dblClickAction ?? 'open';
+        const flag = p?.paths.find((x) => x.startsWith('--'));
+        if (p && p.kind === 'archive' && !flag && action === 'open') setColdFocus(true);
+        if (p) handlePayload(p, true, s.dblClickAction);
+      } finally {
+        setBootReady(true);
+      }
     })();
-    return window.tz.onLaunch(handlePayload);
-  }, [handlePayload]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* 运行中 second-instance 移交:与冷启动分开订阅,不重复读取初始载荷 */
+  useEffect(() => window.tz.onLaunch(handlePayload), [handlePayload]);
 
   /* 自动更新全局提示：后台检查/下载完成时给用户回音；设置页只展示详细进度 */
   useEffect(() => window.tz.onUpdateEvent((ev) => {
@@ -515,6 +533,8 @@ function Shell() {
   };
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+  /* browse 已建立后冷启动首帧标记退场,后续回首页按原有 sbHidden/view 规则恢复侧栏 */
+  useEffect(() => { if (view === 'browse') setColdFocus(false); }, [view]);
   /* 切换活动标签时清空新标签搜索词:标签条常驻搜索框始终只服务当前标签,不残留旧词 */
   const lastActRef = useRef<string | null>(activeId);
   useEffect(() => {
@@ -523,11 +543,13 @@ function Shell() {
   }, [activeId]);
   const runningCount = hub.jobs.filter((j) => j.status === 'running').length;
 
+  if (!bootReady) return <div className="app-shell" />;
+
   return (
     <div className="app-shell">
       <Sidebar
         view={view}
-        hidden={sbHidden && view === 'browse' && !sbCollapsed}
+        hidden={!sbCollapsed && sbHidden && (view === 'browse' || coldFocus)}
         collapsed={sbCollapsed}
         onExpand={expandSidebar}
         width={sbW}
