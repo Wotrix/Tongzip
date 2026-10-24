@@ -139,7 +139,7 @@ async function cdpPageTarget(port: number): Promise<string> {
   for (;;) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; url?: string; webSocketDebuggerUrl?: string }[];
-      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && !(t.url ?? '').includes('window=folder'));
+      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && !(t.url ?? '').includes('window=folder') && !(t.url ?? '').includes('window=task'));
       if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
     } catch { /* devtools 未就绪 */ }
     if (Date.now() - t0 > 30000) throw new Error('CDP page target 等待超时');

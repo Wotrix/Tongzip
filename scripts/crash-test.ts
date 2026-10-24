@@ -146,8 +146,8 @@ async function cdpPageTarget(port: number): Promise<string> {
   for (;;) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; url?: string; webSocketDebuggerUrl?: string }[];
-      // 解压完成会自动弹浏览窗(url 带 window=folder);任务指令只下发给主窗,否则 winClose 会关错窗口
-      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && !(t.url ?? '').includes('window=folder'));
+      // 任务窗/浏览窗(url 带 window=task / window=folder)不是主窗;任务指令只下发主窗,否则 winClose 会关错窗口
+      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && !(t.url ?? '').includes('window=folder') && !(t.url ?? '').includes('window=task'));
       if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
     } catch { /* devtools 未就绪 */ }
     if (Date.now() - t0 > 30000) throw new Error('CDP page target 等待超时');
@@ -324,9 +324,15 @@ async function caseC1(): Promise<void> {
 
       /* 历史持久化 running 折进捕捉条件同帧判定:旧版在捕捉后才串行等 400ms 去抖落盘,
          这段等待在快机器上恰好吞掉整个提交前窗口(本地实测三次落点全漂到提交后) */
-      const engPids = await catchLiveWindow(ud, work, (r) => r.kind === 'extract',
-        'journal 出现 extract 暂存记录且引擎在跑(任务确实执行中)', 45000,
-        () => histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'));
+      let engPids: number[];
+      try {
+        engPids = await catchLiveWindow(ud, work, (r) => r.kind === 'extract',
+          'journal 出现 extract 暂存记录且引擎在跑(任务确实执行中)', 45000,
+          () => histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'));
+      } catch (e) {
+        console.log(`[C1] 第${attempt}次未命中执行中窗口:${(e as Error).message}`);
+        continue;
+      }
 
       /* 模拟非正常退出:快杀主进程(TerminateProcess 亚毫秒)再杀快照内引擎;
          晚于快照出生的探针/残兵自会自然终了,由后续"引擎确已消失"等待兜底 */
@@ -390,9 +396,17 @@ async function caseC2(): Promise<void> {
         `window.tz.deleteEntries(${q(arc)}, ['small.txt'], ${q(PW)})`,
         `{archive:${q(arc)}}`);
 
-      const engPids = await catchLiveWindow(ud, work, (r) => r.stage === 'staged' && !r.kind,
-        'journal 进入 staged 且引擎在改副本(事务提交前窗口)', 45000,
-        () => histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'));
+      /* 捕捉窗口可能是校验阶段的 7za,此时提交只在毫秒之外:kill 后用 journal 证据定落点,
+         错过 staged 窗口就换新现场重做(最多 3 次);撕裂则直接是产品持久化缺陷实锤 */
+      let engPids: number[];
+      try {
+        engPids = await catchLiveWindow(ud, work, (r) => r.stage === 'staged' && !r.kind,
+          'journal 进入 staged 且引擎在改副本(事务提交前窗口)', 45000,
+          () => histTasks(ud).some((t) => t.id === jobId && t.status !== 'done'));
+      } catch (e) {
+        console.log(`[C2] 第${attempt}次未命中 staged 提交前窗口:${(e as Error).message}`);
+        continue;
+      }
 
       /* 捕捉返回即杀(无任何串行等待夹在中间):快杀让"提交前"落点在快机器上也能确定性命中 */
       killHard(app.proc.pid);

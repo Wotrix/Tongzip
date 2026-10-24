@@ -504,6 +504,16 @@ function zipCentralTimes(archive: string): Map<string, string> {
 
 const TXN_TMP_EXT = '.tztmp';
 const TXN_BAK_EXT = '.tzbak';
+/** 7za 修改副本时会再建 <副本>.tmp;崩溃/失败清理必须一并清掉,否则启动恢复后残留 */
+function rmTxnTmp(tmp: string, cleaned?: string[]): void {
+  for (const p of [tmp, `${tmp}.tmp`]) {
+    try {
+      if (!fs.existsSync(p)) continue;
+      fs.rmSync(p, { force: true });
+      cleaned?.push(p);
+    } catch { /* 占用时留给下次启动 */ }
+  }
+}
 /** 修改既有归档:完整性测试上限(用户数据,宁慢必测) */
 const TXN_MODIFY_TEST_MAX = 2 * 1024 ** 3;
 /** 新建归档:测试上限(避免大包压缩后再等一遍全解,结构校验仍必做) */
@@ -622,11 +632,11 @@ export async function verifyArchiveArtifact(
  */
 export function commitTxnSwap(archive: string, tmp: string, uid: string): void {
   if (!fs.existsSync(archive)) {
-    try { fs.renameSync(tmp, archive); return; }
+    try { fs.renameSync(tmp, archive); rmTxnTmp(tmp); return; }
     catch (e) {
       if (!fs.existsSync(archive)) {
         txnRemove(uid);
-        try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ }
+        rmTxnTmp(tmp);
         throw new EngineError(ERR.TXN_FAILED, `写入目标压缩包失败:${(e as Error).message}`);
       }
       /* 挪位瞬间目标被别人创建:继续走 swap,现有文件受备份保护 */
@@ -638,7 +648,7 @@ export function commitTxnSwap(archive: string, tmp: string, uid: string): void {
     fs.renameSync(archive, backup);
   } catch (e) {
     txnRemove(uid);
-    try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ }
+    rmTxnTmp(tmp);
     throw new EngineError(ERR.TXN_FAILED, `无法替换原压缩包(文件可能被占用),已保持原样:${(e as Error).message}`);
   }
   try {
@@ -646,17 +656,18 @@ export function commitTxnSwap(archive: string, tmp: string, uid: string): void {
   } catch (e) {
     let rolledBack = false;
     try { fs.renameSync(backup, archive); rolledBack = true; txnRemove(uid); } catch { /* 回滚也失败:保留 journal,启动恢复 */ }
-    if (rolledBack) { try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ } }
+    if (rolledBack) rmTxnTmp(tmp);
     throw new EngineError(ERR.TXN_FAILED, `压缩包替换失败,${rolledBack ? '原文件已还原' : '原文件已由备份保护'}:${(e as Error).message}`);
   }
   txnUpsert({ id: uid, archive, tmp, backup, stage: 'committed', at: Date.now() });
   try { fs.rmSync(backup, { force: true }); } catch { /* 备份删除失败由启动回收兜底 */ }
+  rmTxnTmp(tmp);
   txnRemove(uid);
 }
 
 /** 事务失败/取消:丢弃副本并注销 journal(原归档从未被触碰) */
 export function abortTxn(uid: string, tmp?: string): void {
-  if (tmp) { try { fs.rmSync(tmp, { force: true }); } catch { /* 残留交启动回收 */ } }
+  if (tmp) rmTxnTmp(tmp);
   txnRemove(uid);
 }
 
@@ -681,17 +692,16 @@ export function recoverStaleTransactions(): { restored: string[]; cleaned: strin
       }
       const hasArchive = fs.existsSync(r.archive);
       const hasBackup = !!r.backup && fs.existsSync(r.backup);
-      const hasTmp = fs.existsSync(r.tmp);
       if (r.stage === 'swapping') {
         /* 原归档没了但备份在:替换中途崩溃 → 还原原件 */
         if (!hasArchive && hasBackup) { fs.renameSync(r.backup!, r.archive); restored.push(r.archive); }
         else if (hasArchive && hasBackup) fs.rmSync(r.backup!, { force: true }); // 替换已完成,备份多余
-        if (hasTmp) { fs.rmSync(r.tmp, { force: true }); cleaned.push(r.tmp); }
+        rmTxnTmp(r.tmp, cleaned);
       } else if (r.stage === 'staged') {
-        if (hasTmp) { fs.rmSync(r.tmp, { force: true }); cleaned.push(r.tmp); }
+        rmTxnTmp(r.tmp, cleaned);
       } else { // committed:仅可能剩没删掉的备份
         if (hasBackup) { fs.rmSync(r.backup!, { force: true }); cleaned.push(r.backup!); }
-        if (hasTmp) { fs.rmSync(r.tmp, { force: true }); cleaned.push(r.tmp); }
+        rmTxnTmp(r.tmp, cleaned);
       }
     } catch { remaining.push(r); }
   }
