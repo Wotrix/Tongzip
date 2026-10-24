@@ -1,23 +1,23 @@
 /**
  * 独立任务窗口 — 压缩/解压统一进度与完成态
- * 布局参考用户提供的完成页：大标题 + 对勾/任务插图 + 通长进度条 + 信息卡 + 底部按钮。
- * 进度与完成信息来自任务进度流；任务中心仍保留，窗口只做当前批次的可视化。
+ * 版式沿用完成页:大标题 + 任务插图 + 通长进度条 + 信息卡 + 底部操作。
+ * 状态只用文案与配色表达(绿=完成 / 红=失败),不再堆叠对勾徽标、角落徽章等状态符号。
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { JobKind, ProgressEvent } from '@shared/types';
 import AppLogo from './AppLogo';
 import {
-  IconArchive, IconCheckCircle, IconClock, IconClose, IconFile, IconFolderOpen,
-  IconMax, IconMin, IconReveal, IconWarn,
+  IconArchive, IconClock, IconClose, IconFile, IconFolderOpen,
+  IconMax, IconMin, IconReveal,
 } from './icons';
 import { basename } from '../lib/format';
 import { cn } from '@/lib/utils';
 
-const LABEL: Record<JobKind, { run: string; done: string; verb: string }> = {
-  compress: { run: '正在压缩', done: '压缩完成', verb: '压缩' },
-  extract: { run: '正在解压', done: '解压完成', verb: '解压' },
-  test: { run: '正在测试', done: '测试完成', verb: '测试' },
-  delete: { run: '正在删除', done: '删除完成', verb: '删除' },
+const LABEL: Record<JobKind, { run: string; done: string; fail: string; verb: string }> = {
+  compress: { run: '正在压缩', done: '压缩完成', fail: '压缩失败', verb: '压缩' },
+  extract: { run: '正在解压', done: '解压完成', fail: '解压失败', verb: '解压' },
+  test: { run: '正在测试', done: '测试完成', fail: '测试失败', verb: '测试' },
+  delete: { run: '正在删除', done: '删除完成', fail: '删除失败', verb: '删除' },
 };
 
 function fmtElapsed(sec: number): string {
@@ -69,9 +69,10 @@ export default function TaskWindow() {
   const running = jobs.filter((j) => j.status === 'running');
   const allSettled = jobs.length > 0 && running.length === 0;
   const allDone = allSettled && jobs.every((j) => j.status === 'done');
-  const failed = allSettled && jobs.some((j) => j.status === 'error' || j.status === 'cancelled');
+  const allCancelled = allSettled && jobs.every((j) => j.status === 'cancelled');
+  const failed = allSettled && !allDone;
 
-  /* 运行中每秒刷新已用时间；全部终态后停表并冻结完成时间 */
+  /* 运行中每秒刷新已用时间;全部终态后停表并冻结完成时间 */
   useEffect(() => {
     if (!running.length) return;
     const t = setInterval(() => setTick((n) => n + 1), 1000);
@@ -101,19 +102,30 @@ export default function TaskWindow() {
   const pct = jobs.length === 0 ? 0
     : allDone ? 100
       : Math.floor(jobs.reduce((s, j) => s + Math.max(0, j.percent), 0) / jobs.length);
-  const indet = !allDone && !failed && jobs.some((j) => j.status === 'running' && j.percent < 0);
+  const indet = !allSettled && jobs.some((j) => j.status === 'running' && j.percent < 0);
+  /* 失败原因取第一条出错/取消的任务,而不是 focus(批量里 focus 可能是一条成功的) */
+  const failedJob = jobs.find((j) => j.status === 'error') ?? jobs.find((j) => j.status === 'cancelled');
+
+  const phase: 'idle' | 'run' | 'ok' | 'bad' = allDone ? 'ok' : failed ? 'bad' : running.length ? 'run' : 'idle';
   const statusTitle = allDone
     ? (jobs.length > 1 ? '全部任务已完成' : LABEL[kind].done)
-    : failed ? '任务失败'
-      : focus ? LABEL[kind].run : '等待任务…';
+    : allCancelled ? '已取消'
+      : failed ? (jobs.length > 1 ? '部分任务未完成' : LABEL[kind].fail)
+        : running.length ? LABEL[kind].run
+          : '等待任务…';
   const subtitle = allDone
-    ? `已成功完成 ${displayFile}`
-    : failed ? (focus?.message ?? '任务未完成')
-      : `正在处理 ${displayFile}`;
+    ? (jobs.length > 1 ? `已成功完成 ${jobs.length} 个任务` : `已成功完成 ${displayFile}`)
+    : failed ? (failedJob?.message ?? '任务未完成')
+      : running.length ? `正在处理 ${displayFile}` : '任务开始后会在这里显示进度';
+  const statusWord = allDone ? '全部完成' : failed ? '未完成' : jobs.length ? '正在处理' : '等待中';
+  const statusHint = allDone
+    ? `文件已${LABEL[kind].verb}到指定目录`
+    : failed ? (failedJob?.message ?? '任务未完成')
+      : jobs.length ? '请稍候，完成后会显示结果' : '暂无可显示的任务';
 
   return (
     <div className="flex h-screen select-none flex-col overflow-hidden bg-background text-foreground">
-      {/* 标题栏：品牌 + 窗控 */}
+      {/* 标题栏:品牌 + 窗控 */}
       <header className="app-drag flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border/60 pl-5 text-[13px] font-semibold">
         <AppLogo className="size-[22px] shrink-0" />
         <span>TongZip</span>
@@ -127,79 +139,74 @@ export default function TaskWindow() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-8 pt-7 pb-5">
-        {/* 完成/进度标题 + 右侧插图 */}
-        <div className="flex items-start justify-between gap-6">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className={cn(
-              'tw-check-pop grid size-[62px] shrink-0 place-items-center rounded-full border-[3px]',
-              allDone ? 'border-emerald-500/30 text-emerald-500' : failed ? 'border-destructive/25 text-destructive' : 'border-primary/25 text-primary',
-            )}>
-              {allDone
-                ? <IconCheckCircle className="size-9" />
-                : failed ? <IconWarn className="size-8" /> : <IconArchive className="size-8" />}
-            </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-8 pb-5 pt-7">
+        {/* 状态切换时整块淡入一次 */}
+        <div key={phase} className="tw-fade-up">
+          {/* 完成/进度标题 + 右侧任务插图 */}
+          <div className="flex items-start justify-between gap-6">
             <div className="min-w-0 pt-0.5">
-              <h1 className={cn('truncate text-[24px] font-bold tracking-[-.01em]', failed && 'text-destructive')}>{statusTitle}</h1>
+              <h1 className={cn(
+                'truncate text-[24px] font-bold tracking-[-.01em]',
+                phase === 'ok' && 'text-emerald-600 dark:text-emerald-400',
+                phase === 'bad' && 'text-destructive',
+              )}>{statusTitle}</h1>
               <p className="mt-1.5 truncate text-[13px] text-muted-foreground">{subtitle}</p>
             </div>
-          </div>
-
-          {/* 右侧任务插图 + 完成徽标 */}
-          <div className="relative hidden shrink-0 sm:block">
-            <div className="grid size-[92px] place-items-center rounded-[22px] bg-primary/[.08] text-primary">
+            <div className={cn(
+              'hidden shrink-0 rounded-[22px] p-[22px] sm:block',
+              phase === 'ok' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : phase === 'bad' ? 'bg-destructive/10 text-destructive'
+                  : 'bg-primary/[.08] text-primary',
+            )}>
               {kind === 'extract' ? <IconFolderOpen className="size-12" /> : <IconArchive className="size-12" />}
             </div>
-            <span className={cn(
-              'absolute -bottom-2 -right-2 grid size-8 place-items-center rounded-full border-2 border-background text-white shadow-sm',
-              failed ? 'bg-destructive' : 'bg-emerald-500',
-            )}>
-              {failed ? <IconClose className="size-3.5" /> : <IconCheckCircle className="size-5" />}
-            </span>
           </div>
-        </div>
 
-        {/* 通长进度条 + 百分比 */}
-        <div className="mt-7 flex items-center gap-4">
-          <div className="relative h-[10px] flex-1 overflow-hidden rounded-full bg-secondary">
-            <i
-              className={cn(
-                'block h-full rounded-full bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))] transition-[width] duration-200 ease-linear',
-                failed && 'bg-destructive',
-                indet && 'w-[34%] animate-[tw-indet_1.2s_ease-in-out_infinite]',
-              )}
-              style={indet ? undefined : { width: `${pct}%` }}
-            >
-              {!allDone && !failed && <i className="tw-shimmer absolute inset-0" />}
-            </i>
-          </div>
-          <span className="w-[44px] shrink-0 text-right text-[13px] font-semibold tabular-nums text-muted-foreground">{pct}%</span>
-        </div>
-
-        {/* 信息卡 */}
-        <div className="mt-6 grid grid-cols-1 gap-0 overflow-hidden rounded-[14px] border border-border/70 bg-secondary/40 sm:grid-cols-[1fr_200px]">
-          <div className="flex min-w-0 flex-col gap-3.5 px-5 py-4">
-            <InfoRow icon={<IconFile />} label={kind === 'compress' ? '压缩文件' : '解压文件'} value={displayFile} />
-            <InfoRow icon={<IconFolderOpen />} label={kind === 'compress' ? '保存位置' : '解压路径'} value={displayPath ?? ''} />
-            <InfoRow icon={<IconClock />} label="已用时间" value={fmtElapsed(elapsed)} />
-            <InfoRow icon={<IconArchive />} label="任务数" value={`${jobs.length} 个`} />
-          </div>
-          <div className="flex flex-col items-center justify-center gap-2 border-t border-border/70 px-5 py-5 text-center sm:border-l sm:border-t-0">
-            <div className={cn(
-              'grid size-10 place-items-center rounded-full text-white',
-              failed ? 'bg-destructive' : allDone ? 'bg-emerald-500' : 'bg-primary',
-            )}>
-              {failed ? <IconWarn className="size-5" /> : <IconCheckCircle className="size-5" />}
+          {/* 通长进度条 + 百分比 */}
+          <div className="mt-7 flex items-center gap-4">
+            <div className="relative h-[10px] flex-1 overflow-hidden rounded-full bg-secondary">
+              <i
+                className={cn(
+                  'relative block h-full overflow-hidden rounded-full transition-[width,background-color] duration-300 ease-out',
+                  phase === 'ok' ? 'bg-emerald-500'
+                    : phase === 'bad' ? 'bg-destructive'
+                      : 'bg-[linear-gradient(90deg,var(--accent-hover),var(--accent))]',
+                  indet && 'w-[32%] animate-[tw-indet_1.2s_ease-in-out_infinite]',
+                )}
+                style={indet ? undefined : { width: `${pct}%` }}
+              >
+                {phase === 'run' && !indet && <i className="tw-shimmer absolute inset-0" />}
+                {phase === 'ok' && <i className="tw-sweep-once absolute inset-y-0 w-1/3 bg-white/60" />}
+              </i>
             </div>
-            <b className="text-[14px]">{failed ? '未完成' : allDone ? '全部完成' : '正在处理'}</b>
-            <span className="text-[12px] leading-[1.5] text-muted-foreground">
-              {failed ? (focus?.message ?? '任务未完成') : allDone ? `文件已成功${LABEL[kind].verb}到指定目录` : '请稍候，完成后会显示结果'}
-            </span>
+            <span className={cn(
+              'w-[44px] shrink-0 text-right text-[13px] font-semibold tabular-nums',
+              phase === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
+                : phase === 'bad' ? 'text-destructive' : 'text-muted-foreground',
+            )}>{indet ? '—' : `${pct}%`}</span>
+          </div>
+
+          {/* 信息卡:左列明细 + 右侧纯文字状态 */}
+          <div className="mt-6 grid grid-cols-1 overflow-hidden rounded-[14px] border border-border/70 bg-secondary/40 sm:grid-cols-[1fr_200px]">
+            <div className="flex min-w-0 flex-col gap-3.5 px-5 py-4">
+              <InfoRow icon={<IconFile />} label={kind === 'compress' ? '压缩文件' : '解压文件'} value={displayFile} />
+              <InfoRow icon={<IconFolderOpen />} label={kind === 'compress' ? '保存位置' : '解压路径'} value={displayPath ?? ''} />
+              <InfoRow icon={<IconClock />} label="已用时间" value={fmtElapsed(elapsed)} />
+              <InfoRow icon={<IconArchive />} label="任务数" value={`${jobs.length} 个`} />
+            </div>
+            <div className="flex flex-col items-center justify-center gap-1.5 border-t border-border/70 px-5 py-5 text-center sm:border-l sm:border-t-0">
+              <b className={cn(
+                'text-[14px]',
+                phase === 'ok' && 'text-emerald-600 dark:text-emerald-400',
+                phase === 'bad' && 'text-destructive',
+              )}>{statusWord}</b>
+              <span className="text-[12px] leading-[1.5] text-muted-foreground">{statusHint}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 完成后底部：图标操作（打开目标文件夹 / 打开文件位置 / 完成） */}
+      {/* 完成后底部:打开文件夹 / 打开文件位置 / 完成 */}
       {allSettled && (
         <footer className="flex h-[64px] shrink-0 items-center gap-1.5 border-t border-border/70 px-5">
           <button className="grid size-9 place-items-center rounded-lg border border-border/80 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-[var(--bg-active)] disabled:cursor-default disabled:opacity-40"
@@ -210,14 +217,12 @@ export default function TaskWindow() {
             title="打开文件位置" disabled={!filePath} onClick={() => filePath && void window.tz.revealInExplorer(filePath)}>
             <IconReveal className="size-[17px]" />
           </button>
-          <div className="ml-auto">
-            <button className={cn(
-              'grid size-9 place-items-center rounded-lg text-white transition-colors active:scale-[.97]',
-              failed ? 'bg-destructive hover:bg-destructive/90' : 'bg-primary hover:bg-primary/90',
-            )} title={failed ? '关闭' : '完成'} onClick={() => window.tz.winClose()}>
-              {failed ? <IconClose className="size-[17px]" /> : <IconCheckCircle className="size-[17px]" />}
-            </button>
-          </div>
+          <button className={cn(
+            'ml-auto inline-flex h-9 items-center rounded-lg px-4 text-[12.5px] font-medium text-white transition-colors active:scale-[.98]',
+            failed ? 'bg-destructive hover:bg-destructive/90' : 'bg-primary hover:bg-primary/90',
+          )} onClick={() => window.tz.winClose()}>
+            {failed ? '关闭' : '完成'}
+          </button>
         </footer>
       )}
     </div>

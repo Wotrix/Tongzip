@@ -507,13 +507,15 @@ select.input { appearance: none; background: var(--bg) url("data:image/svg+xml;u
 }
 @keyframes tw-indet { from { transform: translateX(0); } to { transform: translateX(380%); } }
 
-/* 任务窗口成功完成态:面板浮入 + 对勾弹出/描边 + 自动关闭倒计时条 */
-@keyframes tw-done-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-.tw-done-in { animation: tw-done-in .35s ease-out both; }
-@keyframes tw-check-pop { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-.tw-check-pop { animation: tw-check-pop .45s cubic-bezier(.2, 1.4, .4, 1) both; }
-@keyframes tw-check-draw { from { stroke-dashoffset: 28; } to { stroke-dashoffset: 0; } }
-.tw-check-path { stroke-dasharray: 28; stroke-dashoffset: 28; animation: tw-check-draw .5s .12s ease-out forwards; }
-@keyframes tw-done-countdown { from { width: 100%; } to { width: 0%; } }
-.tw-done-countdown { animation: tw-done-countdown 2400ms linear forwards; }
+/* 任务窗口状态切换:整块淡入上浮(极简版仅此一处文本动效) */
+@keyframes tw-fade-up { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.tw-fade-up { animation: tw-fade-up .3s cubic-bezier(.2, .7, .3, 1) both; }
+
+/* 完成态:进度条上一次性扫光,代替原来的对勾弹出 */
+@keyframes tw-sweep-once {
+  0% { transform: translateX(-110%); opacity: 0; }
+  25% { opacity: .75; }
+  100% { transform: translateX(320%); opacity: 0; }
+}
+.tw-sweep-once { animation: tw-sweep-once .85s ease-out both; }
 

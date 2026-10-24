@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ArchiveFormat, CompressJob } from '@shared/types';
 import { isCreatableFormat, ZIP_PW_OK } from '@shared/types';
-import { Modal, useToast, useModalClose } from './ui';
+import { Modal, useToast, useModalCloseBridge, ModalCloseBinder } from './ui';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { IconArchive, IconAdd, IconChevronDown, IconClose, IconFolder, IconWarn } from './icons';
 import { FORMAT_EXT, SAVE_FILTERS, basename, parentDir } from '../lib/format';
@@ -52,7 +52,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
   onClose: () => void;
 }) {
   const toast = useToast();
-  const close = useModalClose();
+  const [close, bindClose] = useModalCloseBridge(onClose);
   const appendFormat: ArchiveFormat | null = appendTo
     ? (/\.zip$/i.test(appendTo) ? 'zip' : /\.7z$/i.test(appendTo) ? '7z' : null)
     : null;
@@ -176,6 +176,7 @@ export default function CompressDialog({ sources, api, presetFormat, appendTo, o
 
   return (
     <Modal title={appendTo ? '添加到压缩包' : '创建压缩包'} icon={<IconArchive />} onClose={onClose} width={620}>
+      <ModalCloseBinder bind={bindClose} />
       <div className="stack">
 
         {/* 拖拽区(参考图):常显虚线框 + 选择文件主按钮;已选文件以 chips 呈现 */}

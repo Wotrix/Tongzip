@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { ExtractJob } from '@shared/types';
 import { ERR } from '@shared/types';
-import { Modal, useToast, useModalClose } from './ui';
+import { Modal, useToast, useModalCloseBridge, ModalCloseBinder } from './ui';
 import { IconExtract } from './icons';
 import { basename, parentDir } from '../lib/format';
 import type { AppApi } from '../App';
@@ -16,7 +16,7 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
   onClose: () => void;
 }) {
   const toast = useToast();
-  const close = useModalClose();
+  const [close, bindClose] = useModalCloseBridge(onClose);
   const [dest, setDest] = useState(() => `${parentDir(archive).replace(/\//g, '\\')}\\${basename(archive).replace(/(\.tar)?\.[^.]+$/i, '')}`);
   const [overwrite, setOverwrite] = useState<ExtractJob['overwrite']>('ask');
   const [busy, setBusy] = useState(false);
@@ -87,6 +87,7 @@ export default function ExtractDialog({ archive, entries, api, totalBytes, onClo
 
   return (
     <Modal title="解压到…" icon={<IconExtract />} onClose={onClose} width={480}>
+      <ModalCloseBinder bind={bindClose} />
       <div className="stack">
         <div className="note" title={archive}>{basename(archive)}</div>
         <div className="field">

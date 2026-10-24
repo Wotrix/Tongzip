@@ -15,6 +15,26 @@ import { cn } from '@/lib/utils';
 const ModalCloseCtx = createContext<() => void>(() => undefined);
 export const useModalClose = () => useContext(ModalCloseCtx);
 
+/**
+ * 对话框组件本身渲染在 Modal 之外,组件顶层的 useModalClose() 取不到 Modal 内部的 close
+ * (拿到的是上面的默认空函数),提交后关闭会静默失效。
+ * 用法:const [close, bindClose] = useModalCloseBridge(onClose);
+ *       再把 <ModalCloseBinder bind={bindClose} /> 放进 <Modal> 内。
+ * 这样关闭仍然走 Modal 的 close(清焦点残留 + 统一卸载),bridge 之前的调用回落到 onClose。
+ */
+export function useModalCloseBridge(fallback: () => void) {
+  const ref = useRef<() => void>(fallback);
+  const close = useCallback(() => ref.current(), []);
+  const bind = useCallback((fn: () => void) => { ref.current = fn; }, []);
+  return [close, bind] as const;
+}
+
+export function ModalCloseBinder({ bind }: { bind: (fn: () => void) => void }) {
+  const close = useModalClose();
+  useEffect(() => { bind(close); }, [bind, close]);
+  return null;
+}
+
 export function Modal({ title, icon, onClose, children, width }: {
   title: string; icon?: ReactNode; onClose: () => void; children: ReactNode; width?: number;
 }) {
